@@ -17,7 +17,7 @@ class CreatePatientRequest(BaseModel):
 @router.get("/")
 async def get_patients(request: Request) -> list[dict[str, object]]:
     patient_db = request.app.state.patient_db
-    return [patient.to_dict() for patient in await patient_db.get_all()]
+    return [patient.model_dump(mode="json") for patient in await patient_db.get_all()]
 
 
 @router.post("/create", status_code=status.HTTP_201_CREATED)
@@ -37,7 +37,7 @@ async def create_patient(payload: CreatePatientRequest, request: Request) -> dic
         created_at=datetime.utcnow(),
     )
     await patient_db.save(patient)
-    return patient.to_dict()
+    return patient.model_dump(mode="json")
 
 
 @router.get("/{patient_id}")
@@ -49,4 +49,4 @@ async def get_patient(patient_id: str, request: Request) -> dict[str, object]:
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Patient with id '{patient_id}' not found.",
         )
-    return patient.to_dict()
+    return patient.model_dump(mode="json")

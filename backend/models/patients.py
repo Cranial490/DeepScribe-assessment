@@ -28,8 +28,13 @@ class ConsultationRecord:
     consultation_id: str
     raw_transcript: str
     llm_extracted: LLMExtracted | None = None
+    created_at: datetime | None = None
+
     def to_dict(self) -> dict[str, object]:
-        return asdict(self)
+        data = asdict(self)
+        if isinstance(self.created_at, datetime):
+            data["created_at"] = self.created_at.isoformat()
+        return data
 
     def to_json(self) -> str:
         return json.dumps(self.to_dict())

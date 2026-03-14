@@ -1,13 +1,11 @@
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 
-from db import InMemoryPatientDB
 from models.patients import Patient
 
 router = APIRouter(prefix="/patient", tags=["patient"])
-db = InMemoryPatientDB()
 
 
 class CreatePatientRequest(BaseModel):
@@ -17,13 +15,15 @@ class CreatePatientRequest(BaseModel):
 
 
 @router.get("/")
-def get_patients() -> list[dict[str, object]]:
-    return [patient.to_dict() for patient in db.get_all()]
+async def get_patients(request: Request) -> list[dict[str, object]]:
+    patient_db = request.app.state.patient_db
+    return [patient.to_dict() for patient in await patient_db.get_all()]
 
 
 @router.post("/create", status_code=status.HTTP_201_CREATED)
-def create_patient(payload: CreatePatientRequest) -> dict[str, object]:
-    existing = db.get(payload.id)
+async def create_patient(payload: CreatePatientRequest, request: Request) -> dict[str, object]:
+    patient_db = request.app.state.patient_db
+    existing = await patient_db.get(payload.id)
     if existing is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -36,13 +36,14 @@ def create_patient(payload: CreatePatientRequest) -> dict[str, object]:
         last_name=payload.last_name,
         created_at=datetime.utcnow(),
     )
-    db.save(patient)
+    await patient_db.save(patient)
     return patient.to_dict()
 
 
 @router.get("/{patient_id}")
-def get_patient(patient_id: str) -> dict[str, object]:
-    patient = db.get(patient_id)
+async def get_patient(patient_id: str, request: Request) -> dict[str, object]:
+    patient_db = request.app.state.patient_db
+    patient = await patient_db.get(patient_id)
     if patient is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -37,6 +38,7 @@ class AdditionalRelevantFact(BaseModel):
 
 
 class LLMExtracted(BaseModel):
+    status: Literal["processing", "completed", "failed"] = "processing"
     patient: PatientProfile = Field(default_factory=PatientProfile)
     clinical: ClinicalDetails = Field(default_factory=ClinicalDetails)
     trial_search: TrialSearch = Field(default_factory=TrialSearch)

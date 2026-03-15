@@ -1,16 +1,13 @@
-import os
+import asyncio
 from datetime import datetime
 from uuid import uuid4
 
-from dotenv import load_dotenv
+
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel
 
 from models.patients import ConsultationRecord
-from utils.extraction_module.llm_extraction import LLMExtractionService
-from utils.openai_llm import Openai_llm
-
-load_dotenv()
+from utils.extraction_module.job_runner import ExtractionJobRunner
 
 router = APIRouter(prefix="/transcript", tags=["transcript"])
 
@@ -75,32 +72,13 @@ async def upload_transcript(
     }
 
 
-@router.post("/extract")
+@router.post("/extract", status_code=status.HTTP_202_ACCEPTED)
 async def extract_transcript(
     payload: ExtractTranscriptRequest,
     request: Request,
 ) -> dict[str, object]:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="OPENAI_API_KEY is not configured.",
-        )
-
     patient_db = request.app.state.patient_db
-    llm = Openai_llm(llm_api_key=api_key)
-    extraction_service = LLMExtractionService(db=patient_db, llm=llm)
-
-    try:
-        extracted = await extraction_service.extract_patient_profile(
-            patient_id=payload.patient_id,
-            consultation_id=payload.consultation_id,
-        )
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
-        ) from exc
+    job_queue = request.app.state.job_queue
 
     patient = await patient_db.get(payload.patient_id)
     if patient is None:
@@ -108,9 +86,7 @@ async def extract_transcript(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Patient with id '{payload.patient_id}' not found.",
         )
-
-    consultation = patient.consultation_records.get(payload.consultation_id)
-    if consultation is None:
+    if payload.consultation_id not in patient.consultation_records:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=(
@@ -119,12 +95,42 @@ async def extract_transcript(
             ),
         )
 
-    consultation.llm_extracted = extracted
-    patient.consultation_records[payload.consultation_id] = consultation
-    await patient_db.save(patient)
+    job = await job_queue.create_job(
+        patient_id=payload.patient_id,
+        consultation_id=payload.consultation_id,
+    )
+
+    runner = ExtractionJobRunner(app=request.app)
+    asyncio.create_task(
+        runner.run(
+            job_id=job.job_id,
+            patient_id=payload.patient_id,
+            consultation_id=payload.consultation_id,
+        )
+    )
 
     return {
+        "submitted": True,
+        "job_id": job.job_id,
+        "status": job.status,
         "patient_id": payload.patient_id,
         "consultation_id": payload.consultation_id,
-        "llm_extracted": extracted.model_dump(mode="json"),
     }
+
+
+@router.get("/extract/jobs/{patient_id}")
+async def get_patient_extraction_jobs(
+    patient_id: str,
+    request: Request,
+) -> list[dict[str, object]]:
+    patient_db = request.app.state.patient_db
+    patient = await patient_db.get(patient_id)
+    if patient is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Patient with id '{patient_id}' not found.",
+        )
+
+    job_queue = request.app.state.job_queue
+    jobs = await job_queue.get_jobs_for_patient(patient_id)
+    return [job.model_dump(mode="json") for job in jobs]

@@ -69,6 +69,7 @@ class ClinicalClient:
 
         managed_client = client or httpx.AsyncClient()
         try:
+            print(params)
             response = await managed_client.get(
                 self.base_url,
                 params=params,

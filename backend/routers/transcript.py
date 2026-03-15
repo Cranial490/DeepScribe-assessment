@@ -4,9 +4,10 @@ from uuid import uuid4
 
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from models.patients import ConsultationRecord
+from utils.clinical_apis.studies import ClinicalClient
 from utils.extraction_module.job_runner import ExtractionJobRunner
 
 router = APIRouter(prefix="/transcript", tags=["transcript"])
@@ -15,6 +16,34 @@ router = APIRouter(prefix="/transcript", tags=["transcript"])
 class ExtractTranscriptRequest(BaseModel):
     patient_id: str
     consultation_id: str
+
+
+class EditExtractedRequest(BaseModel):
+    patient_id: str
+    consultation_id: str
+    updates: dict[str, object]
+
+
+class TrialSearchRequest(BaseModel):
+    patient_id: str
+    consultation_id: str
+
+
+def _normalize_unique(values: list[str | None]) -> list[str]:
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for value in values:
+        if value is None:
+            continue
+        cleaned = value.strip()
+        if not cleaned:
+            continue
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(cleaned)
+    return normalized
 
 
 @router.get("/")
@@ -134,3 +163,142 @@ async def get_patient_extraction_jobs(
     job_queue = request.app.state.job_queue
     jobs = await job_queue.get_jobs_for_patient(patient_id)
     return [job.model_dump(mode="json") for job in jobs]
+
+
+@router.post("/edit")
+async def edit_extracted_data(
+    payload: EditExtractedRequest,
+    request: Request,
+) -> dict[str, object]:
+    patient_db = request.app.state.patient_db
+    patient = await patient_db.get(payload.patient_id)
+    if patient is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Patient with id '{payload.patient_id}' not found.",
+        )
+
+    consultation = patient.consultation_records.get(payload.consultation_id)
+    if consultation is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"Consultation with id '{payload.consultation_id}' "
+                f"not found for patient '{payload.patient_id}'."
+            ),
+        )
+
+    if consultation.llm_extracted is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"LLM extracted object not found for consultation '{payload.consultation_id}' "
+                f"of patient '{payload.patient_id}'."
+            ),
+        )
+
+    if consultation.llm_extracted.status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "LLM extracted data can only be edited when status is 'completed'. "
+                f"Current status is '{consultation.llm_extracted.status}'."
+            ),
+        )
+
+    if "status" in payload.updates:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Field 'status' cannot be edited.",
+        )
+
+    current = consultation.llm_extracted.model_dump(mode="python")
+    merged = {**current, **payload.updates}
+
+    try:
+        updated_extracted = consultation.llm_extracted.__class__.model_validate(merged)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=exc.errors(),
+        ) from exc
+
+    consultation.llm_extracted = updated_extracted
+    patient.consultation_records[payload.consultation_id] = consultation
+    await patient_db.save(patient)
+
+    return {
+        "patient_id": payload.patient_id,
+        "consultation_id": payload.consultation_id,
+        "llm_extracted": updated_extracted.model_dump(mode="json"),
+    }
+
+
+@router.post("/trials")
+async def fetch_trials_from_extracted(
+    payload: TrialSearchRequest,
+    request: Request,
+) -> dict[str, object]:
+    patient_db = request.app.state.patient_db
+    patient = await patient_db.get(payload.patient_id)
+    if patient is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Patient with id '{payload.patient_id}' not found.",
+        )
+
+    consultation = patient.consultation_records.get(payload.consultation_id)
+    if consultation is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"Consultation with id '{payload.consultation_id}' "
+                f"not found for patient '{payload.patient_id}'."
+            ),
+        )
+
+    if consultation.llm_extracted is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"LLM extracted object not found for consultation '{payload.consultation_id}' "
+                f"of patient '{payload.patient_id}'."
+            ),
+        )
+
+    if consultation.llm_extracted.status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Clinical trial search requires completed extraction. "
+                f"Current status is '{consultation.llm_extracted.status}'."
+            ),
+        )
+
+    extracted = consultation.llm_extracted
+    condition_terms = _normalize_unique(extracted.trial_search.conditions)
+    if not condition_terms:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot fetch trials: trial_search.conditions is missing.",
+        )
+    diagnosis = condition_terms[0]
+
+    query_terms = _normalize_unique(extracted.trial_search.keywords)
+    location_terms = _normalize_unique(extracted.trial_search.location_terms)
+
+    query_term = " ".join(query_terms) if query_terms else None
+    location_text = ", ".join(location_terms) if location_terms else None
+
+    clinical_client = ClinicalClient()
+    try:
+        return await clinical_client.search_studies(
+            diagnosis=diagnosis,
+            query_term=query_term,
+            location_text=location_text,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc

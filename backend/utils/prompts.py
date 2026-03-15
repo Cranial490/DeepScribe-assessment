@@ -32,10 +32,37 @@ conditions
 - Include the primary diagnosis.
 
 keywords
-- Include biomarkers, mutation names, disease modifiers (metastatic, relapsed), and treatment-related keywords.
+IMPORTANT: These keywords will be used in a ClinicalTrials.gov API search query and must remain SIMPLE.
+
+Rules for keyword extraction:
+- Extract AT MOST 5 keywords.
+- Use short single terms when possible.
+- Avoid long phrases.
+- Avoid repeating similar terms (e.g., "EGFR mutation" and "EGFR").
+- Avoid full disease names because the disease is already included in "conditions".
+- Avoid natural language phrases like "progressed after osimertinib".
+- Prefer concise tokens such as biomarkers, drug names, or disease modifiers.
+
+Priority order when selecting keywords:
+1. Biomarkers or genetic mutations (e.g., EGFR, ALK, HER2)
+2. Drug names or therapies (e.g., osimertinib, pembrolizumab)
+3. Disease modifiers (e.g., metastatic, relapsed, resistant)
+4. Important trial-relevant descriptors
+
+Examples of GOOD keywords:
+EGFR
+osimertinib
+exon19
+metastatic
+
+Examples of BAD keywords:
+"progressed after osimertinib treatment"
+"EGFR-mutated non-small cell lung cancer"
+"targeted therapy clinical trial"
 
 location_terms
 - Include city, state, or country terms useful for location-based trial search.
+- Include at most 3 terms.
 
 ADDITIONAL_RELEVANT_FACTS
 Capture useful context that may affect trial eligibility, such as:

@@ -40,6 +40,61 @@ async def create_patient(payload: CreatePatientRequest, request: Request) -> dic
     return patient.model_dump(mode="json")
 
 
+@router.get("/{patient_id}/consultations")
+async def get_patient_consultations(patient_id: str, request: Request) -> list[dict[str, object]]:
+    patient_db = request.app.state.patient_db
+    patient = await patient_db.get(patient_id)
+    if patient is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Patient with id '{patient_id}' not found.",
+        )
+
+    return [
+        consultation.model_dump(mode="json")
+        for consultation in patient.consultation_records.values()
+    ]
+
+
+@router.get("/{patient_id}/consultations/{consultation_id}/extracted")
+async def get_consultation_extracted(
+    patient_id: str,
+    consultation_id: str,
+    request: Request,
+) -> dict[str, object]:
+    patient_db = request.app.state.patient_db
+    patient = await patient_db.get(patient_id)
+    if patient is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Patient with id '{patient_id}' not found.",
+        )
+
+    consultation = patient.consultation_records.get(consultation_id)
+    if consultation is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"Consultation with id '{consultation_id}' not found "
+                f"for patient '{patient_id}'."
+            ),
+        )
+
+    if consultation.llm_extracted is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"LLM extracted object not found for consultation '{consultation_id}' "
+                f"of patient '{patient_id}'."
+            ),
+        )
+
+    if consultation.llm_extracted.status in {"processing", "failed"}:
+        return {"status": consultation.llm_extracted.status}
+
+    return consultation.llm_extracted.model_dump(mode="json")
+
+
 @router.get("/{patient_id}")
 async def get_patient(patient_id: str, request: Request) -> dict[str, object]:
     patient_db = request.app.state.patient_db

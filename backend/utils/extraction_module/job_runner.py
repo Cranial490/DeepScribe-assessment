@@ -1,6 +1,5 @@
 import os
 from dotenv import load_dotenv
-from models.patients import LLMExtracted
 from utils.extraction_module.llm_extraction import LLMExtractionService
 from utils.openai_llm import Openai_llm
 load_dotenv()
@@ -23,7 +22,7 @@ class ExtractionJobRunner:
         consultation = patient.consultation_records.get(consultation_id)
         if consultation is None:
             return
-        consultation.llm_extracted = LLMExtracted(status=status_value)
+        consultation.status = status_value
         patient.consultation_records[consultation_id] = consultation
         await self.patient_db.save(patient)
 
@@ -62,7 +61,6 @@ class ExtractionJobRunner:
                 patient_id=patient_id,
                 consultation_id=consultation_id,
             )
-            extracted.status = "completed"
 
             patient = await self.patient_db.get(patient_id)
             if patient is None:
@@ -84,6 +82,7 @@ class ExtractionJobRunner:
                 )
                 return
 
+            consultation.status = "completed"
             consultation.llm_extracted = extracted
             patient.consultation_records[consultation_id] = consultation
             await self.patient_db.save(patient)

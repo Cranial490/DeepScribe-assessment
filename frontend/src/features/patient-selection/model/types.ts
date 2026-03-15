@@ -10,8 +10,7 @@ export interface PatientRecord {
   id: string
   name: string
   initials: string
-  trialId: string
-  status: PatientStatus
+  patientId: string
   lastVisitLabel: string
 }
 

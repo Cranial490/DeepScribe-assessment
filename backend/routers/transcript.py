@@ -188,21 +188,21 @@ async def edit_extracted_data(
             ),
         )
 
+    if consultation.status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "LLM extracted data can only be edited when status is 'completed'. "
+                f"Current status is '{consultation.status}'."
+            ),
+        )
+
     if consultation.llm_extracted is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=(
                 f"LLM extracted object not found for consultation '{payload.consultation_id}' "
                 f"of patient '{payload.patient_id}'."
-            ),
-        )
-
-    if consultation.llm_extracted.status != "completed":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "LLM extracted data can only be edited when status is 'completed'. "
-                f"Current status is '{consultation.llm_extracted.status}'."
             ),
         )
 
@@ -257,21 +257,21 @@ async def fetch_trials_from_extracted(
             ),
         )
 
+    if consultation.status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Clinical trial search requires completed extraction. "
+                f"Current status is '{consultation.status}'."
+            ),
+        )
+
     if consultation.llm_extracted is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=(
                 f"LLM extracted object not found for consultation '{payload.consultation_id}' "
                 f"of patient '{payload.patient_id}'."
-            ),
-        )
-
-    if consultation.llm_extracted.status != "completed":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Clinical trial search requires completed extraction. "
-                f"Current status is '{consultation.llm_extracted.status}'."
             ),
         )
 

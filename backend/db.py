@@ -10,7 +10,13 @@ from models.patients import Patient
 class InMemoryPatientDB:
     def __init__(self) -> None:
         self._patients: dict[str, Patient] = {}
+        self.id_counter = 1
 
+    def get_id(self) -> int:
+        current_id = self.id_counter
+        self.id_counter += 1
+        return current_id
+        
     async def save(self, patient: Patient) -> None:
         self._patients[patient.id] = patient
 

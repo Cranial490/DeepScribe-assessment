@@ -1,16 +1,24 @@
 import { Search, Sparkles, Users2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import type { CreatePatientInput } from "@/features/patient-selection/hooks/usePatientSelection"
 import { PATIENT_BREADCRUMBS } from "@/features/patient-selection/model/constants"
 import { PatientSelectionTable } from "@/features/patient-selection/ui/PatientSelectionTable"
 import type { PatientRecord } from "@/features/patient-selection/model/types"
-import type { ChangeEvent } from "react"
+import { useState } from "react"
+import type { ChangeEvent, FormEvent } from "react"
 
 interface PatientSelectionScreenProps {
   query: string
   patients: ReadonlyArray<PatientRecord>
   visibleCountLabel: string
+  isLoading: boolean
+  isCreatingPatient: boolean
+  errorMessage: string | null
+  createPatientMessage: string | null
   onQueryChange: (event: ChangeEvent<HTMLInputElement>) => void
+  onCreatePatient: (input: CreatePatientInput) => Promise<boolean>
+  onSelectPatient: (patientId: string) => void
 }
 
 /**
@@ -20,8 +28,30 @@ export function PatientSelectionScreen({
   query,
   patients,
   visibleCountLabel,
+  isLoading,
+  isCreatingPatient,
+  errorMessage,
+  createPatientMessage,
   onQueryChange,
+  onCreatePatient,
+  onSelectPatient,
 }: PatientSelectionScreenProps) {
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [firstName, setFirstName] = useState("")
+  const [lastName, setLastName] = useState("")
+  const [dateOfBirth, setDateOfBirth] = useState("")
+
+  const onCreateSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const created = await onCreatePatient({ firstName, lastName, dateOfBirth })
+    if (created) {
+      setIsCreateModalOpen(false)
+      setFirstName("")
+      setLastName("")
+      setDateOfBirth("")
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#f5f7fc] text-foreground">
       <div className="grid min-h-screen lg:grid-cols-[270px_1fr]">
@@ -86,9 +116,20 @@ export function PatientSelectionScreen({
                 </p>
               </div>
 
-              <Button className="h-14 rounded-full px-9 text-lg font-semibold shadow-sm">
-                Create New Patient
-              </Button>
+              <div className="flex flex-col items-end gap-3">
+                <Button
+                  className="h-14 rounded-full px-9 text-lg font-semibold shadow-sm"
+                  onClick={() => setIsCreateModalOpen(true)}
+                  disabled={isCreatingPatient}
+                >
+                  Create New Patient
+                </Button>
+                {createPatientMessage ? (
+                  <p className="text-sm font-medium text-slate-500">
+                    {createPatientMessage}
+                  </p>
+                ) : null}
+              </div>
             </div>
 
             <div className="mt-8 space-y-6 lg:mt-10">
@@ -97,19 +138,111 @@ export function PatientSelectionScreen({
                 <Input
                   value={query}
                   onChange={onQueryChange}
-                  placeholder="Search patients by name, ID, or status..."
+                  placeholder="Search patients by name or ID..."
                   className="h-16 rounded-3xl border-border/80 bg-white px-14 text-lg placeholder:text-slate-400"
                 />
               </div>
 
+              {errorMessage ? (
+                <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                  {errorMessage}
+                </p>
+              ) : null}
+
               <PatientSelectionTable
                 patients={patients}
                 visibleCountLabel={visibleCountLabel}
+                isLoading={isLoading}
+                onSelectPatient={onSelectPatient}
               />
             </div>
           </main>
         </section>
       </div>
+
+      {isCreateModalOpen ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-border/70 bg-white p-6 shadow-xl">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-slate-900">Create Patient</h2>
+              <button
+                type="button"
+                className="rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100"
+                onClick={() => {
+                  setIsCreateModalOpen(false)
+                  setDateOfBirth("")
+                }}
+                disabled={isCreatingPatient}
+                aria-label="Close modal"
+              >
+                x
+              </button>
+            </div>
+
+            <form className="space-y-4" onSubmit={(event) => void onCreateSubmit(event)}>
+              <div className="space-y-2">
+                <label htmlFor="patient-first-name" className="text-sm font-medium">
+                  First name
+                </label>
+                <Input
+                  id="patient-first-name"
+                  value={firstName}
+                  onChange={(event) => setFirstName(event.target.value)}
+                  placeholder="Enter first name"
+                  className="h-11"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="patient-last-name" className="text-sm font-medium">
+                  Last name
+                </label>
+                <Input
+                  id="patient-last-name"
+                  value={lastName}
+                  onChange={(event) => setLastName(event.target.value)}
+                  placeholder="Enter last name"
+                  className="h-11"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="patient-dob" className="text-sm font-medium">
+                  Date of birth
+                </label>
+                <Input
+                  id="patient-dob"
+                  type="date"
+                  value={dateOfBirth}
+                  onChange={(event) => setDateOfBirth(event.target.value)}
+                  className="h-11"
+                />
+              </div>
+
+              {createPatientMessage ? (
+                <p className="text-sm font-medium text-red-600">{createPatientMessage}</p>
+              ) : null}
+
+              <div className="flex justify-end gap-3 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setIsCreateModalOpen(false)
+                    setDateOfBirth("")
+                  }}
+                  disabled={isCreatingPatient}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isCreatingPatient}>
+                  {isCreatingPatient ? "Creating..." : "Create"}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

@@ -30,8 +30,11 @@ const STUDY_FIELDS = [
 
 interface TrialSearchInputs {
   conditions: string[]
-  keywords: string[]
-  location_terms: string[]
+  interventions: string[]
+  biomarker_and_molecular_terms: string[]
+  preferred_locations: string[]
+  sex: "Male" | "Female" | "All" | null
+  age_groups: Array<"Child" | "Adult" | "Older Adult">
 }
 
 export interface ClinicalTrialsResponse {
@@ -84,24 +87,48 @@ export function buildTrialSearchParams(
     throw new Error("Cannot fetch trials: trial_search.conditions is missing.")
   }
 
-  const queryTerms = normalizeUnique(trialSearch.keywords)
-  const locationTerms = normalizeUnique(trialSearch.location_terms)
+  const interventionTerms = normalizeUnique(trialSearch.interventions)
+  const biomarkerTerms = normalizeUnique(trialSearch.biomarker_and_molecular_terms)
+  const locationTerms = normalizeUnique(trialSearch.preferred_locations)
+  const ageGroups = normalizeUnique(trialSearch.age_groups)
 
   const params = new URLSearchParams({
     format: "json",
-    "query.cond": conditionTerms[0],
-    "filter.overallStatus": "RECRUITING|NOT_YET_RECRUITING|ACTIVE_NOT_RECRUITING",
+    "query.cond": conditionTerms.join(" OR "),
+    "filter.overallStatus": "RECRUITING",
     fields: SEARCH_FIELDS.join(","),
     sort: "@relevance",
     pageSize: "10",
     countTotal: "true",
   })
 
-  if (queryTerms.length > 0) {
-    params.set("query.term", queryTerms.join(" "))
+  if (interventionTerms.length > 0) {
+    params.set("query.intr", interventionTerms.join(" AND "))
+  }
+  if (biomarkerTerms.length > 0) {
+    params.set("query.term", biomarkerTerms.join(" AND "))
   }
   if (locationTerms.length > 0) {
-    params.set("query.locn", locationTerms.join(", "))
+    params.set("query.locn", locationTerms.join(" "))
+  }
+
+  const advancedFilters: string[] = []
+  if (trialSearch.sex === "Male" || trialSearch.sex === "Female" || trialSearch.sex === "All") {
+    advancedFilters.push(`AREA[Sex] ${trialSearch.sex.toUpperCase()}`)
+  }
+  if (ageGroups.length > 0) {
+    const stdAgeValueByLabel: Record<string, string> = {
+      Child: "CHILD",
+      Adult: "ADULT",
+      "Older Adult": "OLDER_ADULT",
+    }
+    const ageFilter = ageGroups
+      .map((value) => `AREA[StdAge] ${stdAgeValueByLabel[value] ?? value}`)
+      .join(" OR ")
+    advancedFilters.push(ageFilter)
+  }
+  if (advancedFilters.length > 0) {
+    params.set("filter.advanced", advancedFilters.join(" AND "))
   }
   if (pageToken) {
     params.set("pageToken", pageToken)

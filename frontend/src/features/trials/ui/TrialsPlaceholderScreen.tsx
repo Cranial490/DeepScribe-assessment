@@ -15,8 +15,11 @@ interface ExtractedTrialSearchResponse {
   status?: "processing" | "failed" | "completed"
   trial_search?: {
     conditions?: string[]
-    keywords?: string[]
-    location_terms?: string[]
+    interventions?: string[]
+    biomarker_and_molecular_terms?: string[]
+    preferred_locations?: string[]
+    sex?: "Male" | "Female" | "All" | null
+    age_groups?: Array<"Child" | "Adult" | "Older Adult">
   }
 }
 
@@ -46,8 +49,11 @@ export function TrialsPlaceholderScreen({
   const [nextPageToken, setNextPageToken] = useState<string | null>(null)
   const [trialSearch, setTrialSearch] = useState<{
     conditions: string[]
-    keywords: string[]
-    location_terms: string[]
+    interventions: string[]
+    biomarker_and_molecular_terms: string[]
+    preferred_locations: string[]
+    sex: "Male" | "Female" | "All" | null
+    age_groups: Array<"Child" | "Adult" | "Older Adult">
   } | null>(null)
 
   const parsedPatientId = useMemo(() => {
@@ -59,7 +65,14 @@ export function TrialsPlaceholderScreen({
   }, [patientId])
 
   const loadTrials = async (
-    searchPayload: { conditions: string[]; keywords: string[]; location_terms: string[] },
+    searchPayload: {
+      conditions: string[]
+      interventions: string[]
+      biomarker_and_molecular_terms: string[]
+      preferred_locations: string[]
+      sex: "Male" | "Female" | "All" | null
+      age_groups: Array<"Child" | "Adult" | "Older Adult">
+    },
     pageToken?: string,
     append = false,
     signal?: AbortSignal,
@@ -136,8 +149,12 @@ export function TrialsPlaceholderScreen({
 
         const resolvedTrialSearch = {
           conditions: extractedPayload.trial_search?.conditions ?? [],
-          keywords: extractedPayload.trial_search?.keywords ?? [],
-          location_terms: extractedPayload.trial_search?.location_terms ?? [],
+          interventions: extractedPayload.trial_search?.interventions ?? [],
+          biomarker_and_molecular_terms:
+            extractedPayload.trial_search?.biomarker_and_molecular_terms ?? [],
+          preferred_locations: extractedPayload.trial_search?.preferred_locations ?? [],
+          sex: extractedPayload.trial_search?.sex ?? null,
+          age_groups: extractedPayload.trial_search?.age_groups ?? [],
         }
         setTrialSearch(resolvedTrialSearch)
         await loadTrials(resolvedTrialSearch, undefined, false, controller.signal)

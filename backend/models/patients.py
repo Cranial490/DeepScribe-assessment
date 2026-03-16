@@ -27,8 +27,11 @@ class ClinicalDetails(BaseModel):
 
 class TrialSearch(BaseModel):
     conditions: list[str] = Field(default_factory=list)
-    keywords: list[str] = Field(default_factory=list)
-    location_terms: list[str] = Field(default_factory=list)
+    interventions: list[str] = Field(default_factory=list)
+    biomarker_and_molecular_terms: list[str] = Field(default_factory=list)
+    preferred_locations: list[str] = Field(default_factory=list)
+    sex: Literal["Male", "Female", "All"] | None = None
+    age_groups: list[Literal["Child", "Adult", "Older Adult"]] = Field(default_factory=list)
 
 
 class AdditionalRelevantFact(BaseModel):
@@ -42,7 +45,6 @@ class LLMExtracted(BaseModel):
     clinical: ClinicalDetails = Field(default_factory=ClinicalDetails)
     trial_search: TrialSearch = Field(default_factory=TrialSearch)
     additional_relevant_facts: list[AdditionalRelevantFact] = Field(default_factory=list)
-
 
 class ConsultationRecord(BaseModel):
     consultation_id: str

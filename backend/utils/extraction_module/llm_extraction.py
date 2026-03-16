@@ -10,7 +10,7 @@ class LLMExtractionService:
 
     async def get_consultation_transcript(
         self,
-        patient_id: str,
+        patient_id: int,
         consultation_id: str,
     ) -> str:
         patient_record = await self.db.get(patient_id)
@@ -27,7 +27,7 @@ class LLMExtractionService:
 
     async def extract_patient_profile(
         self,
-        patient_id: str,
+        patient_id: int,
         consultation_id: str,
     ) -> LLMExtracted:
 

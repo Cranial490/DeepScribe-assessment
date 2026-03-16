@@ -1,0 +1,237 @@
+import { useEffect, useMemo, useState } from "react"
+import { ArrowLeft, Sparkles, Users2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { buildApiUrl } from "@/lib/api"
+
+interface TrialsPlaceholderScreenProps {
+  patientId: string | null
+  consultationId: string | null
+  onBackToVisits: () => void
+}
+
+interface TrialsResponse {
+  studies?: Array<{
+    protocolSection?: {
+      identificationModule?: {
+        nctId?: string
+        briefTitle?: string
+      }
+      descriptionModule?: {
+        briefSummary?: string
+      }
+      designModule?: {
+        phases?: string[]
+      }
+    }
+  }>
+  nextPageToken?: string
+}
+
+export function TrialsPlaceholderScreen({
+  patientId,
+  consultationId,
+  onBackToVisits,
+}: TrialsPlaceholderScreenProps) {
+  const [isLoading, setIsLoading] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [trials, setTrials] = useState<TrialsResponse["studies"]>([])
+
+  const parsedPatientId = useMemo(() => {
+    if (!patientId) {
+      return null
+    }
+    const parsed = Number.parseInt(patientId, 10)
+    return Number.isNaN(parsed) ? null : parsed
+  }, [patientId])
+
+  useEffect(() => {
+    if (parsedPatientId === null || !consultationId) {
+      setErrorMessage("Missing or invalid patient/consultation identifiers.")
+      return
+    }
+
+    const controller = new AbortController()
+
+    async function loadTrials() {
+      try {
+        setIsLoading(true)
+        setErrorMessage(null)
+
+        const response = await fetch(buildApiUrl("/transcript/trials"), {
+          method: "POST",
+          headers: {
+            accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            patient_id: parsedPatientId,
+            consultation_id: consultationId,
+          }),
+          signal: controller.signal,
+        })
+
+        if (!response.ok) {
+          const message = await extractApiError(response)
+          throw new Error(message)
+        }
+
+        const payload = (await response.json()) as TrialsResponse
+        setTrials(payload.studies ?? [])
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return
+        }
+        if (error instanceof Error) {
+          setErrorMessage(error.message)
+          return
+        }
+        setErrorMessage("Unable to load matching trials.")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    void loadTrials()
+
+    return () => {
+      controller.abort()
+    }
+  }, [consultationId, parsedPatientId])
+
+  return (
+    <div className="min-h-screen bg-[#f5f7fc] text-foreground">
+      <div className="grid min-h-screen lg:grid-cols-[270px_1fr]">
+        <aside className="flex flex-col border-r border-border/70 bg-white/80 backdrop-blur-sm">
+          <div className="px-8 pb-6 pt-10">
+            <div className="flex items-center gap-3">
+              <Sparkles className="h-6 w-6 text-blue-600" />
+              <span className="text-3xl font-semibold tracking-tight">DeepScribe</span>
+            </div>
+          </div>
+          <nav className="px-5">
+            <button
+              type="button"
+              className="flex w-full items-center gap-3 rounded-xl bg-slate-100 px-4 py-4 text-base font-semibold text-blue-600"
+            >
+              <Users2 className="h-5 w-5" />
+              Patients
+            </button>
+          </nav>
+          <div className="mt-auto border-t border-border/70 p-6">
+            <div className="flex items-center gap-3">
+              <div className="grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br from-slate-200 to-slate-300 text-sm font-semibold text-slate-700">
+                DR
+              </div>
+              <div>
+                <p className="text-lg font-semibold text-foreground">Dr. Richardson</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  Investigator
+                </p>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <section>
+          <header className="border-b border-border/70 bg-white/60 px-8 py-7 backdrop-blur-sm lg:px-10">
+            <nav className="flex items-center gap-3 text-lg text-slate-400">
+              <span>Clinical Trials</span>
+              <span>›</span>
+              <span className="text-slate-700">Matching Trials</span>
+            </nav>
+          </header>
+
+          <main className="px-6 py-9 lg:px-10">
+            <div className="mx-auto w-full max-w-5xl space-y-8">
+              <Button variant="outline" className="gap-2" onClick={onBackToVisits}>
+                <ArrowLeft className="h-4 w-4" />
+                Back to Visits
+              </Button>
+
+              <section className="rounded-2xl border border-border/70 bg-white p-8 shadow-sm">
+                <p className="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  Trials
+                </p>
+                <h1 className="mt-2 text-4xl font-semibold tracking-tight text-slate-900">
+                  Matching Trials
+                </h1>
+                <p className="mt-4 text-base text-slate-600">
+                  Patient ID {patientId ?? "-"} • Consultation ID {consultationId ?? "-"}
+                </p>
+
+                <div className="mt-8 space-y-4">
+                  {isLoading ? (
+                    <p className="rounded-xl border border-border/70 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                      Loading matching trials...
+                    </p>
+                  ) : null}
+                  {errorMessage ? (
+                    <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                      {errorMessage}
+                    </p>
+                  ) : null}
+                  {!isLoading && !errorMessage && trials && trials.length === 0 ? (
+                    <p className="rounded-xl border border-border/70 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                      No matching trials found.
+                    </p>
+                  ) : null}
+                  {!isLoading && !errorMessage && trials
+                    ? trials.map((study, index) => {
+                        const id = study.protocolSection?.identificationModule?.nctId ?? "N/A"
+                        const title =
+                          study.protocolSection?.identificationModule?.briefTitle ??
+                          "Untitled study"
+                        const summary =
+                          study.protocolSection?.descriptionModule?.briefSummary ??
+                          "No summary available."
+                        const phases = study.protocolSection?.designModule?.phases ?? []
+
+                        return (
+                          <article
+                            key={`${id}-${index}`}
+                            className="rounded-xl border border-border/70 bg-white p-5"
+                          >
+                            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">
+                              {id}
+                            </p>
+                            <h2 className="mt-2 text-xl font-semibold text-slate-900">{title}</h2>
+                            <p className="mt-3 text-sm leading-6 text-slate-600">{summary}</p>
+                            <p className="mt-3 text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">
+                              Phase: {phases.length > 0 ? phases.join(", ") : "NA"}
+                            </p>
+                          </article>
+                        )
+                      })
+                    : null}
+                </div>
+              </section>
+            </div>
+          </main>
+        </section>
+      </div>
+    </div>
+  )
+}
+
+async function extractApiError(response: Response): Promise<string> {
+  try {
+    const payload = (await response.json()) as {
+      detail?: string | Array<{ msg?: string }>
+    }
+
+    if (typeof payload.detail === "string") {
+      return payload.detail
+    }
+
+    if (Array.isArray(payload.detail) && payload.detail.length > 0) {
+      const firstMessage = payload.detail[0]?.msg
+      if (firstMessage) {
+        return firstMessage
+      }
+    }
+  } catch {
+    return `Unable to load matching trials (HTTP ${response.status}).`
+  }
+
+  return `Unable to load matching trials (HTTP ${response.status}).`
+}

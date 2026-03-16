@@ -14,18 +14,18 @@ router = APIRouter(prefix="/transcript", tags=["transcript"])
 
 
 class ExtractTranscriptRequest(BaseModel):
-    patient_id: str
+    patient_id: int
     consultation_id: str
 
 
 class EditExtractedRequest(BaseModel):
-    patient_id: str
+    patient_id: int
     consultation_id: str
     updates: dict[str, object]
 
 
 class TrialSearchRequest(BaseModel):
-    patient_id: str
+    patient_id: int
     consultation_id: str
 
 
@@ -54,10 +54,10 @@ def transcript_router_status() -> dict[str, str]:
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
 async def upload_transcript(
     request: Request,
-    patient_id: str = Form(...),
+    patient_id: int = Form(...),
     raw_transcript: str | None = Form(default=None),
     transcript_file: UploadFile | None = File(default=None),
-) -> dict[str, str]:
+) -> dict[str, object]:
     patient_db = request.app.state.patient_db
 
     if (raw_transcript is None and transcript_file is None) or (
@@ -149,7 +149,7 @@ async def extract_transcript(
 
 @router.get("/extract/jobs/{patient_id}")
 async def get_patient_extraction_jobs(
-    patient_id: str,
+    patient_id: int,
     request: Request,
 ) -> list[dict[str, object]]:
     patient_db = request.app.state.patient_db
@@ -188,21 +188,21 @@ async def edit_extracted_data(
             ),
         )
 
+    if consultation.status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "LLM extracted data can only be edited when status is 'completed'. "
+                f"Current status is '{consultation.status}'."
+            ),
+        )
+
     if consultation.llm_extracted is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=(
                 f"LLM extracted object not found for consultation '{payload.consultation_id}' "
                 f"of patient '{payload.patient_id}'."
-            ),
-        )
-
-    if consultation.llm_extracted.status != "completed":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "LLM extracted data can only be edited when status is 'completed'. "
-                f"Current status is '{consultation.llm_extracted.status}'."
             ),
         )
 
@@ -257,21 +257,21 @@ async def fetch_trials_from_extracted(
             ),
         )
 
+    if consultation.status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Clinical trial search requires completed extraction. "
+                f"Current status is '{consultation.status}'."
+            ),
+        )
+
     if consultation.llm_extracted is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=(
                 f"LLM extracted object not found for consultation '{payload.consultation_id}' "
                 f"of patient '{payload.patient_id}'."
-            ),
-        )
-
-    if consultation.llm_extracted.status != "completed":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Clinical trial search requires completed extraction. "
-                f"Current status is '{consultation.llm_extracted.status}'."
             ),
         )
 

@@ -9,12 +9,18 @@ from models.patients import Patient
 
 class InMemoryPatientDB:
     def __init__(self) -> None:
-        self._patients: dict[str, Patient] = {}
+        self._patients: dict[int, Patient] = {}
+        self.id_counter = 1
+
+    def get_id(self) -> int:
+        current_id = self.id_counter
+        self.id_counter += 1
+        return current_id
 
     async def save(self, patient: Patient) -> None:
         self._patients[patient.id] = patient
 
-    async def get(self, patient_id: str) -> Patient | None:
+    async def get(self, patient_id: int) -> Patient | None:
         return self._patients.get(patient_id)
 
     async def get_all(self) -> list[Patient]:
@@ -23,7 +29,7 @@ class InMemoryPatientDB:
 
 class ExtractionJob(BaseModel):
     job_id: str
-    patient_id: str
+    patient_id: int
     consultation_id: str
     status: Literal["queued", "processing", "completed", "failed"]
     created_at: datetime
@@ -36,7 +42,7 @@ class InMemoryJobQueue:
     def __init__(self) -> None:
         self._jobs: dict[str, ExtractionJob] = {}
 
-    async def create_job(self, patient_id: str, consultation_id: str) -> ExtractionJob:
+    async def create_job(self, patient_id: int, consultation_id: str) -> ExtractionJob:
         now = datetime.utcnow()
         job = ExtractionJob(
             job_id=str(uuid4()),
@@ -55,7 +61,7 @@ class InMemoryJobQueue:
     async def list_jobs(self) -> list[ExtractionJob]:
         return list(self._jobs.values())
 
-    async def get_jobs_for_patient(self, patient_id: str) -> list[ExtractionJob]:
+    async def get_jobs_for_patient(self, patient_id: int) -> list[ExtractionJob]:
         return [job for job in self._jobs.values() if job.patient_id == patient_id]
 
     async def update_status(

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { ArrowLeft, Check, ChevronDown, ChevronRight, FileText, Info, Sparkles, Users2 } from "lucide-react"
+import { ArrowLeft, Check, ChevronDown, ChevronRight, FileText, Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { buildApiUrl } from "@/lib/api"
+import { AppShell } from "@/app/AppShell"
 
 interface VisitDetailScreenProps {
   patientId: string | null
@@ -69,6 +70,7 @@ export function VisitDetailScreen({
   const [transcriptText, setTranscriptText] = useState("")
   const [extracted, setExtracted] = useState<ExtractedData>(createEmptyExtracted())
   const [initialExtracted, setInitialExtracted] = useState<ExtractedData>(createEmptyExtracted())
+  const [listDrafts, setListDrafts] = useState<ListDrafts>(buildListDrafts(createEmptyExtracted()))
 
   const parsedPatientId = useMemo(() => {
     if (!patientId) {
@@ -115,6 +117,7 @@ export function VisitDetailScreen({
         const normalizedExtracted = normalizeExtracted(selected.llm_extracted)
         setExtracted(normalizedExtracted)
         setInitialExtracted(normalizedExtracted)
+        setListDrafts(buildListDrafts(normalizedExtracted))
         setSaveError(null)
         setSaveMessage(null)
       } catch (error) {
@@ -141,8 +144,10 @@ export function VisitDetailScreen({
   const transcriptWordCount = transcriptText.trim().length === 0
     ? 0
     : transcriptText.trim().split(/\s+/).length
+  const extractedWithDrafts = applyListDraftsToExtracted(extracted, listDrafts)
   const isDirty =
-    JSON.stringify(normalizeExtracted(extracted)) !== JSON.stringify(normalizeExtracted(initialExtracted))
+    JSON.stringify(normalizeExtracted(extractedWithDrafts)) !==
+    JSON.stringify(normalizeExtracted(initialExtracted))
 
   const onSave = async () => {
     if (parsedPatientId === null || !consultationId) {
@@ -164,7 +169,7 @@ export function VisitDetailScreen({
         body: JSON.stringify({
           patient_id: parsedPatientId,
           consultation_id: consultationId,
-          llm_extracted: normalizeExtracted(extracted),
+          llm_extracted: normalizeExtracted(extractedWithDrafts),
         }),
       })
 
@@ -180,6 +185,7 @@ export function VisitDetailScreen({
       const normalized = normalizeExtracted(payload.llm_extracted)
       setExtracted(normalized)
       setInitialExtracted(normalized)
+      setListDrafts(buildListDrafts(normalized))
       setSaveMessage("Extracted fields updated successfully.")
     } catch {
       setSaveError("Unable to update extracted fields.")
@@ -188,70 +194,9 @@ export function VisitDetailScreen({
     }
   }
 
-  const setArrayField = (
-    section: "clinical" | "trial_search",
-    key:
-      | "biomarkers"
-      | "prior_treatments"
-      | "conditions"
-      | "interventions"
-      | "biomarker_and_molecular_terms"
-      | "preferred_locations"
-      | "age_groups",
-    value: string,
-  ) => {
-    const items = value
-      .split(",")
-      .map((item) => item.trim())
-      .filter((item) => item.length > 0)
-    const normalizedAgeGroups = items.filter((item): item is "Child" | "Adult" | "Older Adult" =>
-      item === "Child" || item === "Adult" || item === "Older Adult",
-    )
-
-    setExtracted((current) => ({
-      ...current,
-      [section]: {
-        ...current[section],
-        [key]: key === "age_groups" ? normalizedAgeGroups : items,
-      },
-    }))
-  }
-
   return (
-    <div className="min-h-screen bg-[#f5f7fc] text-foreground">
-      <div className="grid min-h-screen lg:grid-cols-[270px_1fr]">
-        <aside className="flex flex-col border-r border-border/70 bg-white/80 backdrop-blur-sm">
-          <div className="px-8 pb-6 pt-10">
-            <div className="flex items-center gap-3">
-              <Sparkles className="h-6 w-6 text-blue-600" />
-              <span className="text-3xl font-semibold tracking-tight">DeepScribe</span>
-            </div>
-          </div>
-          <nav className="px-5">
-            <button
-              type="button"
-              className="flex w-full items-center gap-3 rounded-xl bg-slate-100 px-4 py-4 text-base font-semibold text-blue-600"
-            >
-              <Users2 className="h-5 w-5" />
-              Patients
-            </button>
-          </nav>
-          <div className="mt-auto border-t border-border/70 p-6">
-            <div className="flex items-center gap-3">
-              <div className="grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br from-slate-200 to-slate-300 text-sm font-semibold text-slate-700">
-                DR
-              </div>
-              <div>
-                <p className="text-lg font-semibold text-foreground">Dr. Richardson</p>
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                  Investigator
-                </p>
-              </div>
-            </div>
-          </div>
-        </aside>
-
-        <section>
+    <AppShell>
+      <section>
           <header className="border-b border-border/70 bg-white/60 px-8 py-7 backdrop-blur-sm lg:px-10">
             <nav className="flex items-center gap-3 text-lg text-slate-400">
               {breadcrumbItems.map((crumb, index) => (
@@ -445,25 +390,72 @@ export function VisitDetailScreen({
                       </div>
                       <Field
                         label="Conditions (comma separated)"
-                        value={extracted.trial_search.conditions.join(", ")}
-                        onChange={(value) => setArrayField("trial_search", "conditions", value)}
+                        value={listDrafts.conditions}
+                        onChange={(value) =>
+                          setListDrafts((current) => ({ ...current, conditions: value }))
+                        }
+                        onBlur={() =>
+                          setExtracted((current) => ({
+                            ...current,
+                            trial_search: {
+                              ...current.trial_search,
+                              conditions: parseCommaListInput(listDrafts.conditions),
+                            },
+                          }))
+                        }
                       />
                       <Field
                         label="Interventions (comma separated)"
-                        value={extracted.trial_search.interventions.join(", ")}
-                        onChange={(value) => setArrayField("trial_search", "interventions", value)}
+                        value={listDrafts.interventions}
+                        onChange={(value) =>
+                          setListDrafts((current) => ({ ...current, interventions: value }))
+                        }
+                        onBlur={() =>
+                          setExtracted((current) => ({
+                            ...current,
+                            trial_search: {
+                              ...current.trial_search,
+                              interventions: parseCommaListInput(listDrafts.interventions),
+                            },
+                          }))
+                        }
                       />
                       <Field
                         label="Biomarker Terms (comma separated)"
-                        value={extracted.trial_search.biomarker_and_molecular_terms.join(", ")}
+                        value={listDrafts.biomarker_and_molecular_terms}
                         onChange={(value) =>
-                          setArrayField("trial_search", "biomarker_and_molecular_terms", value)
+                          setListDrafts((current) => ({
+                            ...current,
+                            biomarker_and_molecular_terms: value,
+                          }))
+                        }
+                        onBlur={() =>
+                          setExtracted((current) => ({
+                            ...current,
+                            trial_search: {
+                              ...current.trial_search,
+                              biomarker_and_molecular_terms: parseCommaListInput(
+                                listDrafts.biomarker_and_molecular_terms,
+                              ),
+                            },
+                          }))
                         }
                       />
                       <Field
                         label="Preferred Locations (comma separated)"
-                        value={extracted.trial_search.preferred_locations.join(", ")}
-                        onChange={(value) => setArrayField("trial_search", "preferred_locations", value)}
+                        value={listDrafts.preferred_locations}
+                        onChange={(value) =>
+                          setListDrafts((current) => ({ ...current, preferred_locations: value }))
+                        }
+                        onBlur={() =>
+                          setExtracted((current) => ({
+                            ...current,
+                            trial_search: {
+                              ...current.trial_search,
+                              preferred_locations: parseCommaListInput(listDrafts.preferred_locations),
+                            },
+                          }))
+                        }
                       />
                       <SelectField
                         label="Trial Sex"
@@ -529,13 +521,35 @@ export function VisitDetailScreen({
                       />
                       <Field
                         label="Biomarkers (comma separated)"
-                        value={extracted.clinical.biomarkers.join(", ")}
-                        onChange={(value) => setArrayField("clinical", "biomarkers", value)}
+                        value={listDrafts.biomarkers}
+                        onChange={(value) =>
+                          setListDrafts((current) => ({ ...current, biomarkers: value }))
+                        }
+                        onBlur={() =>
+                          setExtracted((current) => ({
+                            ...current,
+                            clinical: {
+                              ...current.clinical,
+                              biomarkers: parseCommaListInput(listDrafts.biomarkers),
+                            },
+                          }))
+                        }
                       />
                       <Field
                         label="Prior Treatments (comma separated)"
-                        value={extracted.clinical.prior_treatments.join(", ")}
-                        onChange={(value) => setArrayField("clinical", "prior_treatments", value)}
+                        value={listDrafts.prior_treatments}
+                        onChange={(value) =>
+                          setListDrafts((current) => ({ ...current, prior_treatments: value }))
+                        }
+                        onBlur={() =>
+                          setExtracted((current) => ({
+                            ...current,
+                            clinical: {
+                              ...current.clinical,
+                              prior_treatments: parseCommaListInput(listDrafts.prior_treatments),
+                            },
+                          }))
+                        }
                       />
                     </section>
 
@@ -605,9 +619,8 @@ export function VisitDetailScreen({
               </section>
             </div>
           </main>
-        </section>
-      </div>
-    </div>
+      </section>
+    </AppShell>
   )
 }
 
@@ -615,10 +628,12 @@ function Field({
   label,
   value,
   onChange,
+  onBlur,
 }: {
   label: string
   value: string
   onChange: (value: string) => void
+  onBlur?: () => void
 }) {
   return (
     <div className="space-y-1">
@@ -628,6 +643,7 @@ function Field({
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        onBlur={onBlur}
         className="h-10 w-full rounded-lg border border-border/80 bg-white px-3 text-sm text-slate-700 outline-none transition-colors focus:border-blue-400"
       />
     </div>
@@ -802,6 +818,51 @@ function createEmptyExtracted(): ExtractedData {
       age_groups: [],
     },
     additional_relevant_facts: [],
+  }
+}
+
+interface ListDrafts {
+  conditions: string
+  interventions: string
+  biomarker_and_molecular_terms: string
+  preferred_locations: string
+  biomarkers: string
+  prior_treatments: string
+}
+
+function parseCommaListInput(value: string): string[] {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+}
+
+function buildListDrafts(raw: ExtractedData): ListDrafts {
+  return {
+    conditions: raw.trial_search.conditions.join(", "),
+    interventions: raw.trial_search.interventions.join(", "),
+    biomarker_and_molecular_terms: raw.trial_search.biomarker_and_molecular_terms.join(", "),
+    preferred_locations: raw.trial_search.preferred_locations.join(", "),
+    biomarkers: raw.clinical.biomarkers.join(", "),
+    prior_treatments: raw.clinical.prior_treatments.join(", "),
+  }
+}
+
+function applyListDraftsToExtracted(raw: ExtractedData, drafts: ListDrafts): ExtractedData {
+  return {
+    ...raw,
+    clinical: {
+      ...raw.clinical,
+      biomarkers: parseCommaListInput(drafts.biomarkers),
+      prior_treatments: parseCommaListInput(drafts.prior_treatments),
+    },
+    trial_search: {
+      ...raw.trial_search,
+      conditions: parseCommaListInput(drafts.conditions),
+      interventions: parseCommaListInput(drafts.interventions),
+      biomarker_and_molecular_terms: parseCommaListInput(drafts.biomarker_and_molecular_terms),
+      preferred_locations: parseCommaListInput(drafts.preferred_locations),
+    },
   }
 }
 

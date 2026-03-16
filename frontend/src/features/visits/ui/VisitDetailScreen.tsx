@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react"
-import { ArrowLeft, ChevronRight, FileText, Info, Sparkles, Users2 } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { ArrowLeft, Check, ChevronDown, ChevronRight, FileText, Info, Sparkles, Users2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { buildApiUrl } from "@/lib/api"
 
@@ -34,8 +34,11 @@ interface ExtractedData {
   }
   trial_search: {
     conditions: string[]
-    keywords: string[]
-    location_terms: string[]
+    interventions: string[]
+    biomarker_and_molecular_terms: string[]
+    preferred_locations: string[]
+    sex: "Male" | "Female" | "All" | null
+    age_groups: Array<"Child" | "Adult" | "Older Adult">
   }
   additional_relevant_facts: AdditionalRelevantFact[]
 }
@@ -187,19 +190,29 @@ export function VisitDetailScreen({
 
   const setArrayField = (
     section: "clinical" | "trial_search",
-    key: "biomarkers" | "prior_treatments" | "conditions" | "keywords" | "location_terms",
+    key:
+      | "biomarkers"
+      | "prior_treatments"
+      | "conditions"
+      | "interventions"
+      | "biomarker_and_molecular_terms"
+      | "preferred_locations"
+      | "age_groups",
     value: string,
   ) => {
     const items = value
       .split(",")
       .map((item) => item.trim())
       .filter((item) => item.length > 0)
+    const normalizedAgeGroups = items.filter((item): item is "Child" | "Adult" | "Older Adult" =>
+      item === "Child" || item === "Adult" || item === "Older Adult",
+    )
 
     setExtracted((current) => ({
       ...current,
       [section]: {
         ...current[section],
-        [key]: items,
+        [key]: key === "age_groups" ? normalizedAgeGroups : items,
       },
     }))
   }
@@ -436,14 +449,57 @@ export function VisitDetailScreen({
                         onChange={(value) => setArrayField("trial_search", "conditions", value)}
                       />
                       <Field
-                        label="Keywords (comma separated)"
-                        value={extracted.trial_search.keywords.join(", ")}
-                        onChange={(value) => setArrayField("trial_search", "keywords", value)}
+                        label="Interventions (comma separated)"
+                        value={extracted.trial_search.interventions.join(", ")}
+                        onChange={(value) => setArrayField("trial_search", "interventions", value)}
                       />
                       <Field
-                        label="Location Terms (comma separated)"
-                        value={extracted.trial_search.location_terms.join(", ")}
-                        onChange={(value) => setArrayField("trial_search", "location_terms", value)}
+                        label="Biomarker Terms (comma separated)"
+                        value={extracted.trial_search.biomarker_and_molecular_terms.join(", ")}
+                        onChange={(value) =>
+                          setArrayField("trial_search", "biomarker_and_molecular_terms", value)
+                        }
+                      />
+                      <Field
+                        label="Preferred Locations (comma separated)"
+                        value={extracted.trial_search.preferred_locations.join(", ")}
+                        onChange={(value) => setArrayField("trial_search", "preferred_locations", value)}
+                      />
+                      <SelectField
+                        label="Trial Sex"
+                        value={extracted.trial_search.sex ?? ""}
+                        options={["Male", "Female", "All"]}
+                        onChange={(value) =>
+                          setExtracted((current) => ({
+                            ...current,
+                            trial_search: {
+                              ...current.trial_search,
+                              sex:
+                                value === "Male" || value === "Female" || value === "All"
+                                  ? value
+                                  : null,
+                            },
+                          }))
+                        }
+                      />
+                      <MultiSelectField
+                        label="Age Groups"
+                        options={["Child", "Adult", "Older Adult"]}
+                        values={extracted.trial_search.age_groups}
+                        onToggle={(value) =>
+                          setExtracted((current) => {
+                            const exists = current.trial_search.age_groups.includes(value)
+                            return {
+                              ...current,
+                              trial_search: {
+                                ...current.trial_search,
+                                age_groups: exists
+                                  ? current.trial_search.age_groups.filter((item) => item !== value)
+                                  : [...current.trial_search.age_groups, value],
+                              },
+                            }
+                          })
+                        }
                       />
                     </section>
 
@@ -578,6 +634,148 @@ function Field({
   )
 }
 
+function SelectField({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: string
+  options: string[]
+  onChange: (value: string) => void
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    function onDocumentMouseDown(event: MouseEvent) {
+      if (!containerRef.current) {
+        return
+      }
+      if (!containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+
+    document.addEventListener("mousedown", onDocumentMouseDown)
+    return () => {
+      document.removeEventListener("mousedown", onDocumentMouseDown)
+    }
+  }, [])
+
+  const selectedLabel = value || "Not set"
+
+  return (
+    <div ref={containerRef} className="relative space-y-1">
+      <label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">
+        {label}
+      </label>
+      <button
+        type="button"
+        onClick={() => setIsOpen((current) => !current)}
+        className="flex h-10 w-full items-center justify-between rounded-lg border border-border/80 bg-white px-3 text-left text-sm text-slate-700 outline-none transition-colors focus:border-blue-400"
+      >
+        <span>{selectedLabel}</span>
+        <ChevronDown className="h-4 w-4 text-slate-400" />
+      </button>
+      {isOpen ? (
+        <div className="absolute z-20 mt-1 w-full rounded-lg border border-border/80 bg-white p-1 shadow-lg">
+          <button
+            type="button"
+            onClick={() => {
+              onChange("")
+              setIsOpen(false)
+            }}
+            className="flex h-9 w-full items-center justify-between rounded-md px-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+          >
+            <span>Not set</span>
+            {!value ? <Check className="h-4 w-4 text-blue-600" /> : null}
+          </button>
+          {options.map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => {
+                onChange(option)
+                setIsOpen(false)
+              }}
+              className="flex h-9 w-full items-center justify-between rounded-md px-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+            >
+              <span>{option}</span>
+              {value === option ? <Check className="h-4 w-4 text-blue-600" /> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function MultiSelectField({
+  label,
+  options,
+  values,
+  onToggle,
+}: {
+  label: string
+  options: Array<"Child" | "Adult" | "Older Adult">
+  values: Array<"Child" | "Adult" | "Older Adult">
+  onToggle: (value: "Child" | "Adult" | "Older Adult") => void
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    function onDocumentMouseDown(event: MouseEvent) {
+      if (!containerRef.current) {
+        return
+      }
+      if (!containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+
+    document.addEventListener("mousedown", onDocumentMouseDown)
+    return () => {
+      document.removeEventListener("mousedown", onDocumentMouseDown)
+    }
+  }, [])
+
+  const selectedLabel = values.length > 0 ? values.join(", ") : "Not set"
+
+  return (
+    <div ref={containerRef} className="relative space-y-1">
+      <label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">
+        {label}
+      </label>
+      <button
+        type="button"
+        onClick={() => setIsOpen((current) => !current)}
+        className="flex h-10 w-full items-center justify-between rounded-lg border border-border/80 bg-white px-3 text-left text-sm text-slate-700 outline-none transition-colors focus:border-blue-400"
+      >
+        <span className="truncate">{selectedLabel}</span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+      </button>
+      {isOpen ? (
+        <div className="absolute z-20 mt-1 w-full rounded-lg border border-border/80 bg-white p-1 shadow-lg">
+          {options.map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => onToggle(option)}
+              className="flex h-9 w-full items-center justify-between rounded-md px-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+            >
+              <span>{option}</span>
+              {values.includes(option) ? <Check className="h-4 w-4 text-blue-600" /> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function createEmptyExtracted(): ExtractedData {
   return {
     patient: {
@@ -597,8 +795,11 @@ function createEmptyExtracted(): ExtractedData {
     },
     trial_search: {
       conditions: [],
-      keywords: [],
-      location_terms: [],
+      interventions: [],
+      biomarker_and_molecular_terms: [],
+      preferred_locations: [],
+      sex: null,
+      age_groups: [],
     },
     additional_relevant_facts: [],
   }
@@ -627,8 +828,19 @@ function normalizeExtracted(raw: ExtractedData | null | undefined): ExtractedDat
     },
     trial_search: {
       conditions: raw.trial_search?.conditions ?? [],
-      keywords: raw.trial_search?.keywords ?? [],
-      location_terms: raw.trial_search?.location_terms ?? [],
+      interventions: raw.trial_search?.interventions ?? [],
+      biomarker_and_molecular_terms: raw.trial_search?.biomarker_and_molecular_terms ?? [],
+      preferred_locations: raw.trial_search?.preferred_locations ?? [],
+      sex:
+        raw.trial_search?.sex === "Male" ||
+        raw.trial_search?.sex === "Female" ||
+        raw.trial_search?.sex === "All"
+          ? raw.trial_search.sex
+          : null,
+      age_groups: (raw.trial_search?.age_groups ?? []).filter(
+        (value): value is "Child" | "Adult" | "Older Adult" =>
+          value === "Child" || value === "Adult" || value === "Older Adult",
+      ),
     },
     additional_relevant_facts: raw.additional_relevant_facts ?? [],
   }

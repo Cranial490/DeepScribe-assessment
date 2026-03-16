@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { ArrowLeft, Sparkles, Users2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { buildApiUrl } from "@/lib/api"
+import { fetchClinicalTrialDetail } from "@/lib/clinicalTrials"
 
 interface TrialDetailPlaceholderScreenProps {
   nctId: string | null
@@ -27,18 +27,7 @@ export function TrialDetailPlaceholderScreen({ nctId, onBack }: TrialDetailPlace
         setIsLoading(true)
         setErrorMessage(null)
 
-        const response = await fetch(buildApiUrl(`/transcript/trial/${encodeURIComponent(normalizedNctId)}`), {
-          method: "GET",
-          headers: { accept: "application/json" },
-          signal: controller.signal,
-        })
-
-        if (!response.ok) {
-          const message = await extractApiError(response)
-          throw new Error(message)
-        }
-
-        const payload = (await response.json()) as unknown
+        const payload = await fetchClinicalTrialDetail(normalizedNctId, controller.signal)
         setStudyPayload(payload)
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
@@ -233,27 +222,4 @@ function formatValue(value: unknown): string {
     return String(value)
   }
   return JSON.stringify(value)
-}
-
-async function extractApiError(response: Response): Promise<string> {
-  try {
-    const payload = (await response.json()) as {
-      detail?: string | Array<{ msg?: string }>
-    }
-
-    if (typeof payload.detail === "string") {
-      return payload.detail
-    }
-
-    if (Array.isArray(payload.detail) && payload.detail.length > 0) {
-      const firstMessage = payload.detail[0]?.msg
-      if (firstMessage) {
-        return firstMessage
-      }
-    }
-  } catch {
-    return `Unable to load trial details (HTTP ${response.status}).`
-  }
-
-  return `Unable to load trial details (HTTP ${response.status}).`
 }

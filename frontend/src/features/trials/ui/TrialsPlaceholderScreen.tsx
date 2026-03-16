@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { ArrowLeft, Sparkles, Users2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { buildApiUrl } from "@/lib/api"
+import { fetchClinicalTrials } from "@/lib/clinicalTrials"
 
 interface TrialsPlaceholderScreenProps {
   patientId: string | null
@@ -10,8 +11,28 @@ interface TrialsPlaceholderScreenProps {
   onOpenTrial: (nctId: string) => void
 }
 
-interface TrialsResponse {
-  studies?: Array<{
+interface ExtractedTrialSearchResponse {
+  status?: "processing" | "failed" | "completed"
+  trial_search?: {
+    conditions?: string[]
+    interventions?: string[]
+    biomarker_and_molecular_terms?: string[]
+    preferred_locations?: string[]
+    sex?: "Male" | "Female" | "All" | null
+    age_groups?: Array<"Child" | "Adult" | "Older Adult">
+  }
+}
+
+export function TrialsPlaceholderScreen({
+  patientId,
+  consultationId,
+  onBackToVisits,
+  onOpenTrial,
+}: TrialsPlaceholderScreenProps) {
+  const [isLoading, setIsLoading] = useState(false)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [trials, setTrials] = useState<Array<{
     protocolSection?: {
       identificationModule?: {
         nctId?: string
@@ -24,21 +45,16 @@ interface TrialsResponse {
         phases?: string[]
       }
     }
-  }>
-  nextPageToken?: string
-}
-
-export function TrialsPlaceholderScreen({
-  patientId,
-  consultationId,
-  onBackToVisits,
-  onOpenTrial,
-}: TrialsPlaceholderScreenProps) {
-  const [isLoading, setIsLoading] = useState(false)
-  const [isLoadingMore, setIsLoadingMore] = useState(false)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [trials, setTrials] = useState<TrialsResponse["studies"]>([])
+  }>>([])
   const [nextPageToken, setNextPageToken] = useState<string | null>(null)
+  const [trialSearch, setTrialSearch] = useState<{
+    conditions: string[]
+    interventions: string[]
+    biomarker_and_molecular_terms: string[]
+    preferred_locations: string[]
+    sex: "Male" | "Female" | "All" | null
+    age_groups: Array<"Child" | "Adult" | "Older Adult">
+  } | null>(null)
 
   const parsedPatientId = useMemo(() => {
     if (!patientId) {
@@ -48,7 +64,19 @@ export function TrialsPlaceholderScreen({
     return Number.isNaN(parsed) ? null : parsed
   }, [patientId])
 
-  const loadTrials = async (pageToken?: string, append = false, signal?: AbortSignal) => {
+  const loadTrials = async (
+    searchPayload: {
+      conditions: string[]
+      interventions: string[]
+      biomarker_and_molecular_terms: string[]
+      preferred_locations: string[]
+      sex: "Male" | "Female" | "All" | null
+      age_groups: Array<"Child" | "Adult" | "Older Adult">
+    },
+    pageToken?: string,
+    append = false,
+    signal?: AbortSignal,
+  ) => {
     if (parsedPatientId === null || !consultationId) {
       setErrorMessage("Missing or invalid patient/consultation identifiers.")
       return
@@ -62,26 +90,7 @@ export function TrialsPlaceholderScreen({
         setErrorMessage(null)
       }
 
-      const response = await fetch(buildApiUrl("/transcript/trials"), {
-        method: "POST",
-        headers: {
-          accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          patient_id: parsedPatientId,
-          consultation_id: consultationId,
-          page_token: pageToken ?? null,
-        }),
-        signal,
-      })
-
-      if (!response.ok) {
-        const message = await extractApiError(response)
-        throw new Error(message)
-      }
-
-      const payload = (await response.json()) as TrialsResponse
+      const payload = await fetchClinicalTrials(searchPayload, pageToken, signal)
       const nextStudies = payload.studies ?? []
       setTrials((current) => (append ? [...(current ?? []), ...nextStudies] : nextStudies))
       setNextPageToken(payload.nextPageToken ?? null)
@@ -110,7 +119,60 @@ export function TrialsPlaceholderScreen({
     }
 
     const controller = new AbortController()
-    void loadTrials(undefined, false, controller.signal)
+    async function loadExtractedAndTrials() {
+      try {
+        setIsLoading(true)
+        setErrorMessage(null)
+        setTrials([])
+        setNextPageToken(null)
+
+        const extractedResponse = await fetch(
+          buildApiUrl(`/patient/${parsedPatientId}/consultations/${consultationId}/extracted`),
+          {
+            method: "GET",
+            signal: controller.signal,
+          },
+        )
+
+        if (!extractedResponse.ok) {
+          throw new Error(await extractBackendApiError(extractedResponse))
+        }
+
+        const extractedPayload = (await extractedResponse.json()) as ExtractedTrialSearchResponse
+        if (extractedPayload.status && extractedPayload.status !== "completed") {
+          throw new Error(
+            extractedPayload.status === "processing"
+              ? "Extraction is still processing. Try again in a moment."
+              : "Extraction failed for this consultation. Please re-run extraction.",
+          )
+        }
+
+        const resolvedTrialSearch = {
+          conditions: extractedPayload.trial_search?.conditions ?? [],
+          interventions: extractedPayload.trial_search?.interventions ?? [],
+          biomarker_and_molecular_terms:
+            extractedPayload.trial_search?.biomarker_and_molecular_terms ?? [],
+          preferred_locations: extractedPayload.trial_search?.preferred_locations ?? [],
+          sex: extractedPayload.trial_search?.sex ?? null,
+          age_groups: extractedPayload.trial_search?.age_groups ?? [],
+        }
+        setTrialSearch(resolvedTrialSearch)
+        await loadTrials(resolvedTrialSearch, undefined, false, controller.signal)
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return
+        }
+        if (error instanceof Error) {
+          setErrorMessage(error.message)
+          return
+        }
+        setErrorMessage("Unable to load matching trials.")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    void loadExtractedAndTrials()
 
     return () => {
       controller.abort()
@@ -118,11 +180,11 @@ export function TrialsPlaceholderScreen({
   }, [consultationId, parsedPatientId])
 
   const onLoadMore = () => {
-    if (!nextPageToken || isLoading || isLoadingMore) {
+    if (!nextPageToken || isLoading || isLoadingMore || !trialSearch) {
       return
     }
     setErrorMessage(null)
-    void loadTrials(nextPageToken, true)
+    void loadTrials(trialSearch, nextPageToken, true)
   }
 
   return (
@@ -258,7 +320,7 @@ export function TrialsPlaceholderScreen({
   )
 }
 
-async function extractApiError(response: Response): Promise<string> {
+async function extractBackendApiError(response: Response): Promise<string> {
   try {
     const payload = (await response.json()) as {
       detail?: string | Array<{ msg?: string }>

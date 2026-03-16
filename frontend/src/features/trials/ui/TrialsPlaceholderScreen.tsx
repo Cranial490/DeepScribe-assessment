@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { buildApiUrl } from "@/lib/api"
 import { fetchClinicalTrials } from "@/lib/clinicalTrials"
 import { AppShell } from "@/app/AppShell"
+import { parseApiError } from "@/shared/lib/apiErrors"
+import { PageHeader } from "@/shared/ui/PageHeader"
+import type { ClinicalTrialStudy, TrialSearchInput } from "@/shared/types/clinical"
 
 interface TrialsPlaceholderScreenProps {
   patientId: string | null
@@ -14,14 +17,7 @@ interface TrialsPlaceholderScreenProps {
 
 interface ExtractedTrialSearchResponse {
   status?: "processing" | "failed" | "completed"
-  trial_search?: {
-    conditions?: string[]
-    interventions?: string[]
-    biomarker_and_molecular_terms?: string[]
-    preferred_locations?: string[]
-    sex?: "Male" | "Female" | "All" | null
-    age_groups?: Array<"Child" | "Adult" | "Older Adult">
-  }
+  trial_search?: Partial<TrialSearchInput>
 }
 
 export function TrialsPlaceholderScreen({
@@ -33,29 +29,9 @@ export function TrialsPlaceholderScreen({
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [trials, setTrials] = useState<Array<{
-    protocolSection?: {
-      identificationModule?: {
-        nctId?: string
-        briefTitle?: string
-      }
-      descriptionModule?: {
-        briefSummary?: string
-      }
-      designModule?: {
-        phases?: string[]
-      }
-    }
-  }>>([])
+  const [trials, setTrials] = useState<ClinicalTrialStudy[]>([])
   const [nextPageToken, setNextPageToken] = useState<string | null>(null)
-  const [trialSearch, setTrialSearch] = useState<{
-    conditions: string[]
-    interventions: string[]
-    biomarker_and_molecular_terms: string[]
-    preferred_locations: string[]
-    sex: "Male" | "Female" | "All" | null
-    age_groups: Array<"Child" | "Adult" | "Older Adult">
-  } | null>(null)
+  const [trialSearch, setTrialSearch] = useState<TrialSearchInput | null>(null)
 
   const parsedPatientId = useMemo(() => {
     if (!patientId) {
@@ -65,53 +41,49 @@ export function TrialsPlaceholderScreen({
     return Number.isNaN(parsed) ? null : parsed
   }, [patientId])
 
-  const loadTrials = async (
-    searchPayload: {
-      conditions: string[]
-      interventions: string[]
-      biomarker_and_molecular_terms: string[]
-      preferred_locations: string[]
-      sex: "Male" | "Female" | "All" | null
-      age_groups: Array<"Child" | "Adult" | "Older Adult">
+  const loadTrials = useCallback(
+    async (
+      searchPayload: TrialSearchInput,
+      pageToken?: string,
+      append = false,
+      signal?: AbortSignal,
+    ) => {
+      if (parsedPatientId === null || !consultationId) {
+        setErrorMessage("Missing or invalid patient/consultation identifiers.")
+        return
+      }
+
+      try {
+        if (append) {
+          setIsLoadingMore(true)
+        } else {
+          setIsLoading(true)
+          setErrorMessage(null)
+        }
+
+        const payload = await fetchClinicalTrials(searchPayload, pageToken, signal)
+        const nextStudies = payload.studies ?? []
+        setTrials((current) => (append ? [...(current ?? []), ...nextStudies] : nextStudies))
+        setNextPageToken(payload.nextPageToken ?? null)
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return
+        }
+        if (error instanceof Error) {
+          setErrorMessage(error.message)
+          return
+        }
+        setErrorMessage("Unable to load matching trials.")
+      } finally {
+        if (append) {
+          setIsLoadingMore(false)
+        } else {
+          setIsLoading(false)
+        }
+      }
     },
-    pageToken?: string,
-    append = false,
-    signal?: AbortSignal,
-  ) => {
-    if (parsedPatientId === null || !consultationId) {
-      setErrorMessage("Missing or invalid patient/consultation identifiers.")
-      return
-    }
-
-    try {
-      if (append) {
-        setIsLoadingMore(true)
-      } else {
-        setIsLoading(true)
-        setErrorMessage(null)
-      }
-
-      const payload = await fetchClinicalTrials(searchPayload, pageToken, signal)
-      const nextStudies = payload.studies ?? []
-      setTrials((current) => (append ? [...(current ?? []), ...nextStudies] : nextStudies))
-      setNextPageToken(payload.nextPageToken ?? null)
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        return
-      }
-      if (error instanceof Error) {
-        setErrorMessage(error.message)
-        return
-      }
-      setErrorMessage("Unable to load matching trials.")
-    } finally {
-      if (append) {
-        setIsLoadingMore(false)
-      } else {
-        setIsLoading(false)
-      }
-    }
-  }
+    [consultationId, parsedPatientId],
+  )
 
   useEffect(() => {
     if (parsedPatientId === null || !consultationId) {
@@ -136,7 +108,12 @@ export function TrialsPlaceholderScreen({
         )
 
         if (!extractedResponse.ok) {
-          throw new Error(await extractBackendApiError(extractedResponse))
+          throw new Error(
+            await parseApiError(
+              extractedResponse,
+              `Unable to load matching trials (HTTP ${extractedResponse.status}).`,
+            ),
+          )
         }
 
         const extractedPayload = (await extractedResponse.json()) as ExtractedTrialSearchResponse
@@ -148,13 +125,13 @@ export function TrialsPlaceholderScreen({
           )
         }
 
-        const resolvedTrialSearch = {
+        const resolvedTrialSearch: TrialSearchInput = {
           conditions: extractedPayload.trial_search?.conditions ?? [],
           interventions: extractedPayload.trial_search?.interventions ?? [],
           biomarker_and_molecular_terms:
             extractedPayload.trial_search?.biomarker_and_molecular_terms ?? [],
           preferred_locations: extractedPayload.trial_search?.preferred_locations ?? [],
-          sex: extractedPayload.trial_search?.sex ?? null,
+          sex: extractedPayload.trial_search?.sex ?? "All",
           age_groups: extractedPayload.trial_search?.age_groups ?? [],
         }
         setTrialSearch(resolvedTrialSearch)
@@ -178,7 +155,7 @@ export function TrialsPlaceholderScreen({
     return () => {
       controller.abort()
     }
-  }, [consultationId, parsedPatientId])
+  }, [consultationId, loadTrials, parsedPatientId])
 
   const onLoadMore = () => {
     if (!nextPageToken || isLoading || isLoadingMore || !trialSearch) {
@@ -191,13 +168,7 @@ export function TrialsPlaceholderScreen({
   return (
     <AppShell>
       <section>
-          <header className="border-b border-border/70 bg-white/60 px-8 py-7 backdrop-blur-sm lg:px-10">
-            <nav className="flex items-center gap-3 text-lg text-slate-400">
-              <span>Clinical Trials</span>
-              <span>›</span>
-              <span className="text-slate-700">Matching Trials</span>
-            </nav>
-          </header>
+          <PageHeader breadcrumbs={["Clinical Trials", "Matching Trials"]} />
 
           <main className="px-6 py-9 lg:px-10">
             <div className="mx-auto w-full max-w-5xl space-y-8">
@@ -286,27 +257,4 @@ export function TrialsPlaceholderScreen({
       </section>
     </AppShell>
   )
-}
-
-async function extractBackendApiError(response: Response): Promise<string> {
-  try {
-    const payload = (await response.json()) as {
-      detail?: string | Array<{ msg?: string }>
-    }
-
-    if (typeof payload.detail === "string") {
-      return payload.detail
-    }
-
-    if (Array.isArray(payload.detail) && payload.detail.length > 0) {
-      const firstMessage = payload.detail[0]?.msg
-      if (firstMessage) {
-        return firstMessage
-      }
-    }
-  } catch {
-    return `Unable to load matching trials (HTTP ${response.status}).`
-  }
-
-  return `Unable to load matching trials (HTTP ${response.status}).`
 }

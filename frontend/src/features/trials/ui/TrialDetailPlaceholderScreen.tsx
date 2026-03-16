@@ -3,6 +3,7 @@ import { ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { fetchClinicalTrialDetail } from "@/lib/clinicalTrials"
 import { AppShell } from "@/app/AppShell"
+import { PageHeader } from "@/shared/ui/PageHeader"
 
 interface TrialDetailPlaceholderScreenProps {
   nctId: string | null
@@ -54,15 +55,7 @@ export function TrialDetailPlaceholderScreen({ nctId, onBack }: TrialDetailPlace
   return (
     <AppShell>
       <section>
-          <header className="border-b border-border/70 bg-white/60 px-8 py-7 backdrop-blur-sm lg:px-10">
-            <nav className="flex items-center gap-3 text-lg text-slate-400">
-              <span>Clinical Trials</span>
-              <span>›</span>
-              <span>Trial</span>
-              <span>›</span>
-              <span className="text-slate-700">{nctId ?? "Unknown"}</span>
-            </nav>
-          </header>
+          <PageHeader breadcrumbs={["Clinical Trials", "Trial", nctId ?? "Unknown"]} />
 
           <main className="px-6 py-9 lg:px-10">
             <div className="mx-auto w-full max-w-5xl space-y-8">

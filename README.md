@@ -38,6 +38,13 @@ From an engineering perspective, the system is intentionally pragmatic: a featur
 - Designed a human-in-the/review stage for varification of llm output.
 - Freedom to change the trial criteria and test the trial output for quick feedback.
 
+Initial planning designs:
+
+![App Flow - Initial Planning Design](./app-flow.png)
+![Backend - Initial Planning Design](./backend.png)
+
+***The designs above were created before implementation; the final implementation includes a few updates.***
+
 
 ## Local Setup
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useRef } from "react"
 import type { ChangeEvent } from "react"
 import type { PatientRecord } from "@/features/patient-selection/model/types"
 import { buildApiUrl } from "@/lib/api"
@@ -46,6 +47,25 @@ export function usePatientSelection(): UsePatientSelectionResult {
   const [isCreatingPatient, setIsCreatingPatient] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [createPatientMessage, setCreatePatientMessage] = useState<string | null>(null)
+  const createMessageTimeoutRef = useRef<number | null>(null)
+
+  const clearCreateMessageTimeout = () => {
+    if (createMessageTimeoutRef.current !== null) {
+      window.clearTimeout(createMessageTimeoutRef.current)
+      createMessageTimeoutRef.current = null
+    }
+  }
+
+  const setCreateMessage = (message: string | null, autoDismissMs?: number) => {
+    clearCreateMessageTimeout()
+    setCreatePatientMessage(message)
+    if (message && autoDismissMs) {
+      createMessageTimeoutRef.current = window.setTimeout(() => {
+        setCreatePatientMessage(null)
+        createMessageTimeoutRef.current = null
+      }, autoDismissMs)
+    }
+  }
 
   async function loadPatients(signal?: AbortSignal) {
     const response = await fetch(buildApiUrl("/patient/"), {
@@ -83,6 +103,7 @@ export function usePatientSelection(): UsePatientSelectionResult {
 
     return () => {
       controller.abort()
+      clearCreateMessageTimeout()
     }
   }, [])
 
@@ -106,7 +127,7 @@ export function usePatientSelection(): UsePatientSelectionResult {
     const lastName = input.lastName.trim()
     const dateOfBirth = input.dateOfBirth.trim()
     if (!firstName || !lastName) {
-      setCreatePatientMessage("Please enter both first and last name.")
+      setCreateMessage("Please enter both first and last name.")
       return false
     }
 
@@ -118,7 +139,7 @@ export function usePatientSelection(): UsePatientSelectionResult {
 
     try {
       setIsCreatingPatient(true)
-      setCreatePatientMessage(null)
+      setCreateMessage(null)
       setErrorMessage(null)
 
       const response = await fetch(buildApiUrl("/patient/create"), {
@@ -135,12 +156,12 @@ export function usePatientSelection(): UsePatientSelectionResult {
           response,
           `Unable to create patient (HTTP ${response.status}).`,
         )
-        setCreatePatientMessage(errorText)
+        setCreateMessage(errorText)
         return false
       }
 
       await loadPatients()
-      setCreatePatientMessage(`Patient '${firstName} ${lastName}' created.`)
+      setCreateMessage(`Patient '${firstName} ${lastName}' created.`, 4000)
       return true
     } catch {
       setErrorMessage("Unable to create patient from API.")

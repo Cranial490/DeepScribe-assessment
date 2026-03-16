@@ -134,7 +134,7 @@ export function VisitsScreen({
                         type="text"
                         value={query}
                         onChange={(event) => setQuery(event.target.value)}
-                        placeholder="Search visits..."
+                        placeholder="Search by consultation ID, status, or created timestamp..."
                         className="h-11 w-full rounded-xl border border-border/80 bg-white pl-10 pr-3 text-sm text-slate-700 outline-none transition-colors focus:border-blue-400"
                       />
                     </div>

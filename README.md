@@ -32,11 +32,11 @@ From an engineering perspective, the system is intentionally pragmatic: a featur
 ## Contributions
 
 - Designed the backend architecture and made the extraction-processing decision (synchronous/blocking vs async/non-blocking), ultimately implementing async + polling.
+- Strict typing for llm output using pydantic and refined prompt for extraction of precise trial fields, along with other information for better decision making for clinician.
 - Drove the core workflow and product decisions end to end; used AI primarily for execution support.
 - Designed the UI flow and focused on a clean, intuitive clinician experience.
-- Created the system planning diagram:
-
-![DeepScribe Flow](./deepscribe-flow.svg)
+- Designed a human-in-the/review stage for varification of llm output.
+- Freedom to change the trial criteria and test the trial output for quick feedback.
 
 
 ## Local Setup

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { ArrowLeft, FileText, Sparkles, Users2 } from "lucide-react"
+import { ArrowLeft, ChevronRight, FileText, Info, Sparkles, Users2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { buildApiUrl } from "@/lib/api"
 
@@ -7,6 +7,7 @@ interface VisitDetailScreenProps {
   patientId: string | null
   consultationId: string | null
   onBackToVisits: () => void
+  onShowMatchingTrials: () => void
 }
 
 interface AdditionalRelevantFact {
@@ -53,13 +54,18 @@ export function VisitDetailScreen({
   patientId,
   consultationId,
   onBackToVisits,
+  onShowMatchingTrials,
 }: VisitDetailScreenProps) {
   const breadcrumbItems = ["Clinical Trials", "Patient Selection", "Visits", "Details"]
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saveMessage, setSaveMessage] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
   const [consultationStatus, setConsultationStatus] = useState<string | null>(null)
   const [transcriptText, setTranscriptText] = useState("")
   const [extracted, setExtracted] = useState<ExtractedData>(createEmptyExtracted())
+  const [initialExtracted, setInitialExtracted] = useState<ExtractedData>(createEmptyExtracted())
 
   const parsedPatientId = useMemo(() => {
     if (!patientId) {
@@ -103,7 +109,11 @@ export function VisitDetailScreen({
 
         setConsultationStatus(selected.status ?? "processing")
         setTranscriptText(selected.raw_transcript ?? "")
-        setExtracted(normalizeExtracted(selected.llm_extracted))
+        const normalizedExtracted = normalizeExtracted(selected.llm_extracted)
+        setExtracted(normalizedExtracted)
+        setInitialExtracted(normalizedExtracted)
+        setSaveError(null)
+        setSaveMessage(null)
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           return
@@ -128,6 +138,52 @@ export function VisitDetailScreen({
   const transcriptWordCount = transcriptText.trim().length === 0
     ? 0
     : transcriptText.trim().split(/\s+/).length
+  const isDirty =
+    JSON.stringify(normalizeExtracted(extracted)) !== JSON.stringify(normalizeExtracted(initialExtracted))
+
+  const onSave = async () => {
+    if (parsedPatientId === null || !consultationId) {
+      setSaveError("Missing or invalid patient/consultation identifiers.")
+      return
+    }
+
+    try {
+      setIsSaving(true)
+      setSaveError(null)
+      setSaveMessage(null)
+
+      const response = await fetch(buildApiUrl("/transcript/edit"), {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          patient_id: parsedPatientId,
+          consultation_id: consultationId,
+          llm_extracted: normalizeExtracted(extracted),
+        }),
+      })
+
+      if (!response.ok) {
+        const apiError = await extractApiError(response)
+        setSaveError(apiError)
+        return
+      }
+
+      const payload = (await response.json()) as {
+        llm_extracted?: ExtractedData
+      }
+      const normalized = normalizeExtracted(payload.llm_extracted)
+      setExtracted(normalized)
+      setInitialExtracted(normalized)
+      setSaveMessage("Extracted fields updated successfully.")
+    } catch {
+      setSaveError("Unable to update extracted fields.")
+    } finally {
+      setIsSaving(false)
+    }
+  }
 
   const setArrayField = (
     section: "clinical" | "trial_search",
@@ -243,14 +299,51 @@ export function VisitDetailScreen({
                         Patient ID {patientId ?? "N/A"} · Consultation ID {consultationId ?? "N/A"}
                       </p>
                     </div>
-                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.1em] text-emerald-700">
-                      {consultationStatus ?? "unknown"}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.1em] text-emerald-700">
+                        {consultationStatus ?? "unknown"}
+                      </span>
+                      <Button
+                        size="sm"
+                        onClick={() => void onSave()}
+                        disabled={
+                          isLoading ||
+                          consultationStatus !== "completed" ||
+                          !isDirty ||
+                          isSaving
+                        }
+                      >
+                        {isSaving ? "Updating..." : "Update"}
+                      </Button>
+                    </div>
                   </div>
+
+                  <p className="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                    AI-generated content may contain errors. Please review all extracted fields and update them as
+                    needed before using them for trial search or clinical decisions.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onShowMatchingTrials}
+                    disabled={isLoading || !patientId || !consultationId}
+                    className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-blue-600 hover:text-blue-700 disabled:cursor-not-allowed disabled:text-slate-400"
+                  >
+                    Show matching trials <ChevronRight className="h-4 w-4" />
+                  </button>
 
                   {consultationStatus !== "completed" ? (
                     <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
                       Extraction is currently {consultationStatus ?? "processing"}. Editable fields may be incomplete.
+                    </p>
+                  ) : null}
+                  {saveError ? (
+                    <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                      {saveError}
+                    </p>
+                  ) : null}
+                  {saveMessage ? (
+                    <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                      {saveMessage}
                     </p>
                   ) : null}
 
@@ -326,6 +419,35 @@ export function VisitDetailScreen({
                     </section>
 
                     <section className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                          Trial Search
+                        </h2>
+                        <div className="group relative">
+                          <Info className="h-4 w-4 text-slate-500" />
+                          <div className="pointer-events-none absolute bottom-6 left-0 z-10 hidden w-64 rounded-md border border-slate-200 bg-white p-2 text-xs normal-case tracking-normal text-slate-700 shadow-md group-hover:block">
+                            These fields are used for trial search. Update these for better trial matches.
+                          </div>
+                        </div>
+                      </div>
+                      <Field
+                        label="Conditions (comma separated)"
+                        value={extracted.trial_search.conditions.join(", ")}
+                        onChange={(value) => setArrayField("trial_search", "conditions", value)}
+                      />
+                      <Field
+                        label="Keywords (comma separated)"
+                        value={extracted.trial_search.keywords.join(", ")}
+                        onChange={(value) => setArrayField("trial_search", "keywords", value)}
+                      />
+                      <Field
+                        label="Location Terms (comma separated)"
+                        value={extracted.trial_search.location_terms.join(", ")}
+                        onChange={(value) => setArrayField("trial_search", "location_terms", value)}
+                      />
+                    </section>
+
+                    <section className="space-y-3">
                       <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
                         Clinical
                       </h2>
@@ -358,27 +480,6 @@ export function VisitDetailScreen({
                         label="Prior Treatments (comma separated)"
                         value={extracted.clinical.prior_treatments.join(", ")}
                         onChange={(value) => setArrayField("clinical", "prior_treatments", value)}
-                      />
-                    </section>
-
-                    <section className="space-y-3">
-                      <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                        Trial Search
-                      </h2>
-                      <Field
-                        label="Conditions (comma separated)"
-                        value={extracted.trial_search.conditions.join(", ")}
-                        onChange={(value) => setArrayField("trial_search", "conditions", value)}
-                      />
-                      <Field
-                        label="Keywords (comma separated)"
-                        value={extracted.trial_search.keywords.join(", ")}
-                        onChange={(value) => setArrayField("trial_search", "keywords", value)}
-                      />
-                      <Field
-                        label="Location Terms (comma separated)"
-                        value={extracted.trial_search.location_terms.join(", ")}
-                        onChange={(value) => setArrayField("trial_search", "location_terms", value)}
                       />
                     </section>
 
@@ -531,4 +632,27 @@ function normalizeExtracted(raw: ExtractedData | null | undefined): ExtractedDat
     },
     additional_relevant_facts: raw.additional_relevant_facts ?? [],
   }
+}
+
+async function extractApiError(response: Response): Promise<string> {
+  try {
+    const payload = (await response.json()) as {
+      detail?: string | Array<{ msg?: string }>
+    }
+
+    if (typeof payload.detail === "string") {
+      return payload.detail
+    }
+
+    if (Array.isArray(payload.detail) && payload.detail.length > 0) {
+      const firstMessage = payload.detail[0]?.msg
+      if (firstMessage) {
+        return firstMessage
+      }
+    }
+  } catch {
+    return `Unable to update extracted fields (HTTP ${response.status}).`
+  }
+
+  return `Unable to update extracted fields (HTTP ${response.status}).`
 }

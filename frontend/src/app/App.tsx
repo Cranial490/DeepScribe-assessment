@@ -5,6 +5,7 @@ import { VisitsScreen } from "@/features/visits/ui/VisitsScreen"
 import { VisitDetailScreen } from "@/features/visits/ui/VisitDetailScreen"
 import { UploadTranscriptScreen } from "@/features/transcript-upload/ui/UploadTranscriptScreen"
 import { TrialsPlaceholderScreen } from "@/features/trials/ui/TrialsPlaceholderScreen"
+import { TrialDetailPlaceholderScreen } from "@/features/trials/ui/TrialDetailPlaceholderScreen"
 
 /**
  * Root container component for the frontend app entrypoint.
@@ -46,6 +47,7 @@ export default function App() {
       <Route path="/visits/:patientId/:consultationId" element={<VisitDetailRoute />} />
       <Route path="/upload-transcript/:patientId" element={<UploadTranscriptRoute />} />
       <Route path="/trials/:patientId/:consultationId" element={<TrialsRoute />} />
+      <Route path="/trial/:nctId" element={<TrialDetailRoute />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
@@ -77,6 +79,9 @@ function VisitDetailRoute() {
       patientId={params.patientId ?? null}
       consultationId={params.consultationId ?? null}
       onBackToVisits={() => navigate(`/visits/${params.patientId ?? ""}`)}
+      onShowMatchingTrials={() =>
+        navigate(`/trials/${params.patientId ?? ""}/${params.consultationId ?? ""}`)
+      }
     />
   )
 }
@@ -100,6 +105,18 @@ function TrialsRoute() {
       patientId={params.patientId ?? null}
       consultationId={params.consultationId ?? null}
       onBackToVisits={() => navigate(`/visits/${params.patientId ?? ""}`)}
+      onOpenTrial={(nctId) => navigate(`/trial/${nctId}`)}
+    />
+  )
+}
+
+function TrialDetailRoute() {
+  const navigate = useNavigate()
+  const params = useParams<{ nctId: string }>()
+  return (
+    <TrialDetailPlaceholderScreen
+      nctId={params.nctId ?? null}
+      onBack={() => navigate(-1)}
     />
   )
 }

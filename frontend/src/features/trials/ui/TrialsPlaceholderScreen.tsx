@@ -7,6 +7,7 @@ interface TrialsPlaceholderScreenProps {
   patientId: string | null
   consultationId: string | null
   onBackToVisits: () => void
+  onOpenTrial: (nctId: string) => void
 }
 
 interface TrialsResponse {
@@ -31,10 +32,13 @@ export function TrialsPlaceholderScreen({
   patientId,
   consultationId,
   onBackToVisits,
+  onOpenTrial,
 }: TrialsPlaceholderScreenProps) {
   const [isLoading, setIsLoading] = useState(false)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [trials, setTrials] = useState<TrialsResponse["studies"]>([])
+  const [nextPageToken, setNextPageToken] = useState<string | null>(null)
 
   const parsedPatientId = useMemo(() => {
     if (!patientId) {
@@ -44,6 +48,61 @@ export function TrialsPlaceholderScreen({
     return Number.isNaN(parsed) ? null : parsed
   }, [patientId])
 
+  const loadTrials = async (pageToken?: string, append = false, signal?: AbortSignal) => {
+    if (parsedPatientId === null || !consultationId) {
+      setErrorMessage("Missing or invalid patient/consultation identifiers.")
+      return
+    }
+
+    try {
+      if (append) {
+        setIsLoadingMore(true)
+      } else {
+        setIsLoading(true)
+        setErrorMessage(null)
+      }
+
+      const response = await fetch(buildApiUrl("/transcript/trials"), {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          patient_id: parsedPatientId,
+          consultation_id: consultationId,
+          page_token: pageToken ?? null,
+        }),
+        signal,
+      })
+
+      if (!response.ok) {
+        const message = await extractApiError(response)
+        throw new Error(message)
+      }
+
+      const payload = (await response.json()) as TrialsResponse
+      const nextStudies = payload.studies ?? []
+      setTrials((current) => (append ? [...(current ?? []), ...nextStudies] : nextStudies))
+      setNextPageToken(payload.nextPageToken ?? null)
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return
+      }
+      if (error instanceof Error) {
+        setErrorMessage(error.message)
+        return
+      }
+      setErrorMessage("Unable to load matching trials.")
+    } finally {
+      if (append) {
+        setIsLoadingMore(false)
+      } else {
+        setIsLoading(false)
+      }
+    }
+  }
+
   useEffect(() => {
     if (parsedPatientId === null || !consultationId) {
       setErrorMessage("Missing or invalid patient/consultation identifiers.")
@@ -51,52 +110,20 @@ export function TrialsPlaceholderScreen({
     }
 
     const controller = new AbortController()
-
-    async function loadTrials() {
-      try {
-        setIsLoading(true)
-        setErrorMessage(null)
-
-        const response = await fetch(buildApiUrl("/transcript/trials"), {
-          method: "POST",
-          headers: {
-            accept: "application/json",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            patient_id: parsedPatientId,
-            consultation_id: consultationId,
-          }),
-          signal: controller.signal,
-        })
-
-        if (!response.ok) {
-          const message = await extractApiError(response)
-          throw new Error(message)
-        }
-
-        const payload = (await response.json()) as TrialsResponse
-        setTrials(payload.studies ?? [])
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          return
-        }
-        if (error instanceof Error) {
-          setErrorMessage(error.message)
-          return
-        }
-        setErrorMessage("Unable to load matching trials.")
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    void loadTrials()
+    void loadTrials(undefined, false, controller.signal)
 
     return () => {
       controller.abort()
     }
   }, [consultationId, parsedPatientId])
+
+  const onLoadMore = () => {
+    if (!nextPageToken || isLoading || isLoadingMore) {
+      return
+    }
+    setErrorMessage(null)
+    void loadTrials(nextPageToken, true)
+  }
 
   return (
     <div className="min-h-screen bg-[#f5f7fc] text-foreground">
@@ -191,18 +218,36 @@ export function TrialsPlaceholderScreen({
                             key={`${id}-${index}`}
                             className="rounded-xl border border-border/70 bg-white p-5"
                           >
-                            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">
-                              {id}
-                            </p>
-                            <h2 className="mt-2 text-xl font-semibold text-slate-900">{title}</h2>
-                            <p className="mt-3 text-sm leading-6 text-slate-600">{summary}</p>
-                            <p className="mt-3 text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">
-                              Phase: {phases.length > 0 ? phases.join(", ") : "NA"}
-                            </p>
+                            <button
+                              type="button"
+                              className="w-full text-left"
+                              onClick={() => {
+                                if (id !== "N/A") {
+                                  onOpenTrial(id)
+                                }
+                              }}
+                              disabled={id === "N/A"}
+                            >
+                              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">
+                                {id}
+                              </p>
+                              <h2 className="mt-2 text-xl font-semibold text-slate-900">{title}</h2>
+                              <p className="mt-3 text-sm leading-6 text-slate-600">{summary}</p>
+                              <p className="mt-3 text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">
+                                Phase: {phases.length > 0 ? phases.join(", ") : "NA"}
+                              </p>
+                            </button>
                           </article>
                         )
                       })
                     : null}
+                  {!isLoading && !errorMessage && nextPageToken ? (
+                    <div className="pt-2">
+                      <Button onClick={onLoadMore} disabled={isLoadingMore}>
+                        {isLoadingMore ? "Loading more..." : "Load more"}
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
               </section>
             </div>

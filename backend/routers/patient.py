@@ -63,7 +63,7 @@ async def create_patient(payload: CreatePatientRequest, request: Request) -> dic
 
 
 @router.get("/{patient_id}/consultations")
-async def get_patient_consultations(patient_id: str, request: Request) -> list[dict[str, object]]:
+async def get_patient_consultations(patient_id: int, request: Request) -> list[dict[str, object]]:
     patient_db = request.app.state.patient_db
     patient = await patient_db.get(patient_id)
     if patient is None:
@@ -80,7 +80,7 @@ async def get_patient_consultations(patient_id: str, request: Request) -> list[d
 
 @router.get("/{patient_id}/consultations/{consultation_id}/extracted")
 async def get_consultation_extracted(
-    patient_id: str,
+    patient_id: int,
     consultation_id: str,
     request: Request,
 ) -> dict[str, object]:
@@ -118,7 +118,7 @@ async def get_consultation_extracted(
 
 
 @router.get("/{patient_id}")
-async def get_patient(patient_id: str, request: Request) -> dict[str, object]:
+async def get_patient(patient_id: int, request: Request) -> dict[str, object]:
     patient_db = request.app.state.patient_db
     patient = await patient_db.get(patient_id)
     if patient is None:

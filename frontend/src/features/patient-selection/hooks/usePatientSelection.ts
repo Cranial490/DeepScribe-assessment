@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import type { ChangeEvent } from "react"
 import type { PatientRecord } from "@/features/patient-selection/model/types"
+import { buildApiUrl } from "@/lib/api"
 
 interface UsePatientSelectionResult {
   query: string
@@ -46,7 +47,7 @@ export function usePatientSelection(): UsePatientSelectionResult {
   const [createPatientMessage, setCreatePatientMessage] = useState<string | null>(null)
 
   async function loadPatients(signal?: AbortSignal) {
-    const response = await fetch("/patient/", {
+    const response = await fetch(buildApiUrl("/patient/"), {
       method: "GET",
       headers: { accept: "application/json" },
       signal,
@@ -119,7 +120,7 @@ export function usePatientSelection(): UsePatientSelectionResult {
       setCreatePatientMessage(null)
       setErrorMessage(null)
 
-      const response = await fetch("/patient/create", {
+      const response = await fetch(buildApiUrl("/patient/create"), {
         method: "POST",
         headers: {
           accept: "application/json",

@@ -11,6 +11,7 @@ class ClinicalClient:
             "NCTId",
             "BriefTitle",
             "BriefSummary",
+            "Phase"
         ),
     ) -> None:
         self.base_url = base_url

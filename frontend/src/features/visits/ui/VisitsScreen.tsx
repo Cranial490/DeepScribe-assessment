@@ -1,20 +1,20 @@
 import { ArrowLeft, ChevronLeft, ChevronRight, Search, Sparkles, Users2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useEffect, useState } from "react"
+import { buildApiUrl } from "@/lib/api"
 
 interface VisitsScreenProps {
   patientId: string | null
   onBackToPatients: () => void
   onUploadTranscript: () => void
   onOpenConsultation: (consultationId: string) => void
+  onShowMatchingTrials: (consultationId: string) => void
 }
 
 interface ApiConsultation {
   consultation_id: string
   created_at: string | null
-  llm_extracted?: {
-    status?: "processing" | "completed" | "failed"
-  } | null
+  status?: "processing" | "completed" | "failed"
 }
 
 type VisitStatus = "queued" | "processing" | "completed" | "failed"
@@ -36,6 +36,7 @@ export function VisitsScreen({
   onBackToPatients,
   onUploadTranscript,
   onOpenConsultation,
+  onShowMatchingTrials,
 }: VisitsScreenProps) {
   const breadcrumbItems = ["Clinical Trials", "Patient Selection", "Visits"]
   const [query, setQuery] = useState("")
@@ -56,7 +57,7 @@ export function VisitsScreen({
         setIsLoading(true)
         setErrorMessage(null)
 
-        const response = await fetch(`/patient/${patientId}/consultations`, {
+        const response = await fetch(buildApiUrl(`/patient/${patientId}/consultations`), {
           method: "GET",
           headers: { accept: "application/json" },
           signal: controller.signal,
@@ -148,7 +149,7 @@ export function VisitsScreen({
           </header>
 
           <main className="px-6 py-9 lg:px-10">
-            <div className="max-w-5xl space-y-8">
+            <div className="mx-auto w-full max-w-5xl space-y-8">
               <Button variant="outline" className="gap-2" onClick={onBackToPatients}>
                 <ArrowLeft className="h-4 w-4" />
                 Back to Patient Selection
@@ -205,7 +206,19 @@ export function VisitsScreen({
 
                       {!isLoading && !errorMessage
                         ? filteredVisits.map((visit) => (
-                            <article key={visit.consultationId} className="grid grid-cols-12 items-center px-5 py-5">
+                            <article
+                              key={visit.consultationId}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => onOpenConsultation(visit.consultationId)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault()
+                                  onOpenConsultation(visit.consultationId)
+                                }
+                              }}
+                              className="grid cursor-pointer grid-cols-12 items-center px-5 py-5 transition-colors hover:bg-slate-50"
+                            >
                               <div className="col-span-3">
                                 <p className="text-base font-semibold text-slate-800">{visit.visitDateLabel}</p>
                                 <p className="mt-1 text-xs text-slate-500">{visit.visitTimeLabel}</p>
@@ -217,12 +230,15 @@ export function VisitsScreen({
                                 </span>
                               </div>
                               <div className="col-span-3 text-right">
-                                <button
+                                  <button
                                   type="button"
-                                  onClick={() => onOpenConsultation(visit.consultationId)}
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    onShowMatchingTrials(visit.consultationId)
+                                  }}
                                   className="inline-flex items-center gap-1 text-sm font-semibold text-blue-600 hover:text-blue-700"
                                 >
-                                  View Details <ChevronRight className="h-4 w-4" />
+                                  Show matching trials <ChevronRight className="h-4 w-4" />
                                 </button>
                               </div>
                             </article>
@@ -270,7 +286,7 @@ function mapApiConsultationToVisitRow(consultation: ApiConsultation): VisitRow {
     visitDateLabel: createdDate ? formatVisitDate(createdDate) : "Unknown date",
     visitTimeLabel: createdDate ? formatVisitTime(createdDate) : "--:--",
     visitType: "Consultation",
-    status: mapStatus(consultation.llm_extracted?.status),
+    status: mapStatus(consultation.status),
   }
 }
 

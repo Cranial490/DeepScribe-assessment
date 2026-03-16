@@ -1,7 +1,7 @@
 import { ArrowLeft, FileUp, ShieldCheck, Sparkles, Users2 } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { buildApiUrl } from "@/lib/api"
 
 interface UploadTranscriptScreenProps {
   patientId: string | null
@@ -9,6 +9,11 @@ interface UploadTranscriptScreenProps {
 }
 
 type UploadMode = "file" | "paste"
+
+interface UploadTranscriptResponse {
+  patient_id: number
+  consultation_id: string
+}
 
 /**
  * Upload transcript page with mutually exclusive file upload and paste modes.
@@ -61,7 +66,7 @@ export function UploadTranscriptScreen({
         formData.append("raw_transcript", rawTranscript)
       }
 
-      const response = await fetch("/transcript/upload", {
+      const response = await fetch(buildApiUrl("/transcript/upload"), {
         method: "POST",
         body: formData,
       })
@@ -72,8 +77,28 @@ export function UploadTranscriptScreen({
         return
       }
 
-      const payload = (await response.json()) as { consultation_id: string }
+      const payload = (await response.json()) as UploadTranscriptResponse
       setSuccessMessage(`Uploaded successfully. Consultation ID: ${payload.consultation_id}`)
+
+      try {
+        const extractResponse = await fetch(buildApiUrl("/transcript/extract"), {
+          method: "POST",
+          headers: {
+            accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            patient_id: payload.patient_id,
+            consultation_id: payload.consultation_id,
+          }),
+        })
+
+        if (!extractResponse.ok) {
+          // Non-blocking by design: user is returned to visits even if extraction cannot be queued.
+        }
+      } catch {
+        // Extract job submission is best-effort. Upload has already succeeded.
+      }
 
       // Return to visits so the newly created consultation appears in the list.
       onBackToVisits()
@@ -177,7 +202,7 @@ export function UploadTranscriptScreen({
                   <div className="p-8">
                     {mode === "file" ? (
                       <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/70 p-10 text-center">
-                        <div className="mx-auto grid h-18 w-18 place-items-center rounded-full bg-blue-50">
+                        <div className="mx-auto grid h-16 w-16 place-items-center rounded-full border border-blue-100 bg-blue-50">
                           <FileUp className="h-7 w-7 text-blue-600" />
                         </div>
                         <p className="mt-5 text-3xl font-semibold text-slate-800">
@@ -185,15 +210,23 @@ export function UploadTranscriptScreen({
                         </p>
                         <p className="mt-2 text-lg text-slate-500">Only .txt files are supported</p>
 
-                        <div className="mx-auto mt-6 max-w-md space-y-3">
-                          <Input
+                        <div className="mx-auto mt-6 flex max-w-md items-center justify-center gap-3">
+                          <input
+                            id="transcript-file-input"
                             type="file"
                             accept=".txt,text/plain"
+                            className="sr-only"
                             onChange={(event) => setFile(event.target.files?.[0] ?? null)}
                           />
-                          {file ? (
-                            <p className="text-sm text-slate-600">Selected: {file.name}</p>
-                          ) : null}
+                          <label
+                            htmlFor="transcript-file-input"
+                            className="inline-flex h-10 cursor-pointer items-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
+                          >
+                            Choose File
+                          </label>
+                          <p className="text-sm text-slate-600">
+                            {file ? file.name : "No file chosen"}
+                          </p>
                         </div>
                       </div>
                     ) : (

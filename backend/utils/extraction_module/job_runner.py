@@ -12,7 +12,7 @@ class ExtractionJobRunner:
 
     async def set_consultation_extraction_status(
         self,
-        patient_id: str,
+        patient_id: int,
         consultation_id: str,
         status_value: str,
     ) -> None:
@@ -29,7 +29,7 @@ class ExtractionJobRunner:
     async def run(
         self,
         job_id: str,
-        patient_id: str,
+        patient_id: int,
         consultation_id: str,
     ) -> None:
         await self.job_queue.update_status(job_id=job_id, status="processing")

@@ -8,6 +8,7 @@ import { PatientSelectionTable } from "@/features/patient-selection/ui/PatientSe
 import type { PatientRecord } from "@/features/patient-selection/model/types"
 import { useState } from "react"
 import type { ChangeEvent, FormEvent } from "react"
+import { PageHeader } from "@/shared/ui/PageHeader"
 
 interface PatientSelectionScreenProps {
   query: string
@@ -56,18 +57,7 @@ export function PatientSelectionScreen({
   return (
     <AppShell>
       <section>
-          <header className="border-b border-border/70 bg-white/60 px-8 py-7 backdrop-blur-sm lg:px-10">
-            <nav className="flex items-center gap-3 text-lg text-slate-400">
-              {PATIENT_BREADCRUMBS.map((crumb, index) => (
-                <div key={crumb.label} className="flex items-center gap-3">
-                  <span className={index === PATIENT_BREADCRUMBS.length - 1 ? "text-slate-700" : ""}>
-                    {crumb.label}
-                  </span>
-                  {index < PATIENT_BREADCRUMBS.length - 1 && <span>›</span>}
-                </div>
-              ))}
-            </nav>
-          </header>
+          <PageHeader breadcrumbs={PATIENT_BREADCRUMBS.map((crumb) => crumb.label)} />
 
           <main className="px-6 py-9 lg:px-10">
             <div className="flex flex-wrap items-start justify-between gap-6">

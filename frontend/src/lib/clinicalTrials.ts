@@ -1,3 +1,9 @@
+import type {
+  AgeGroup,
+  ClinicalTrialStudy,
+  TrialSearchInput,
+} from "@/shared/types/clinical"
+
 const CLINICAL_TRIALS_BASE_URL = "https://clinicaltrials.gov/api/v2/studies"
 
 const SEARCH_FIELDS = [
@@ -28,30 +34,8 @@ const STUDY_FIELDS = [
   "BriefSummary",
 ]
 
-interface TrialSearchInputs {
-  conditions: string[]
-  interventions: string[]
-  biomarker_and_molecular_terms: string[]
-  preferred_locations: string[]
-  sex: "Male" | "Female" | "All" | null
-  age_groups: Array<"Child" | "Adult" | "Older Adult">
-}
-
 export interface ClinicalTrialsResponse {
-  studies?: Array<{
-    protocolSection?: {
-      identificationModule?: {
-        nctId?: string
-        briefTitle?: string
-      }
-      descriptionModule?: {
-        briefSummary?: string
-      }
-      designModule?: {
-        phases?: string[]
-      }
-    }
-  }>
+  studies?: ClinicalTrialStudy[]
   nextPageToken?: string
 }
 
@@ -79,7 +63,7 @@ export function normalizeUnique(values: Array<string | null | undefined>): strin
 }
 
 export function buildTrialSearchParams(
-  trialSearch: TrialSearchInputs,
+  trialSearch: TrialSearchInput,
   pageToken?: string,
 ): URLSearchParams {
   const conditionTerms = normalizeUnique(trialSearch.conditions)
@@ -117,7 +101,7 @@ export function buildTrialSearchParams(
     advancedFilters.push(`AREA[Sex] ${trialSearch.sex.toUpperCase()}`)
   }
   if (ageGroups.length > 0) {
-    const stdAgeValueByLabel: Record<string, string> = {
+    const stdAgeValueByLabel: Record<AgeGroup, string> = {
       Child: "CHILD",
       Adult: "ADULT",
       "Older Adult": "OLDER_ADULT",
@@ -138,7 +122,7 @@ export function buildTrialSearchParams(
 }
 
 export async function fetchClinicalTrials(
-  trialSearch: TrialSearchInputs,
+  trialSearch: TrialSearchInput,
   pageToken?: string,
   signal?: AbortSignal,
 ): Promise<ClinicalTrialsResponse> {

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import type { ChangeEvent } from "react"
 import type { PatientRecord } from "@/features/patient-selection/model/types"
 import { buildApiUrl } from "@/lib/api"
+import { parseApiError } from "@/shared/lib/apiErrors"
 
 interface UsePatientSelectionResult {
   query: string
@@ -130,7 +131,10 @@ export function usePatientSelection(): UsePatientSelectionResult {
       })
 
       if (!response.ok) {
-        const errorText = await extractApiError(response)
+        const errorText = await parseApiError(
+          response,
+          `Unable to create patient (HTTP ${response.status}).`,
+        )
         setCreatePatientMessage(errorText)
         return false
       }
@@ -190,25 +194,4 @@ function formatDate(date: Date): string {
     day: "2-digit",
     year: "numeric",
   }).format(date)
-}
-
-async function extractApiError(response: Response): Promise<string> {
-  try {
-    const payload = (await response.json()) as {
-      detail?: string | Array<{ msg?: string }>
-    }
-    if (typeof payload.detail === "string") {
-      return payload.detail
-    }
-    if (Array.isArray(payload.detail) && payload.detail.length > 0) {
-      const firstMessage = payload.detail[0]?.msg
-      if (firstMessage) {
-        return firstMessage
-      }
-    }
-  } catch {
-    return `Unable to create patient (HTTP ${response.status}).`
-  }
-
-  return `Unable to create patient (HTTP ${response.status}).`
 }

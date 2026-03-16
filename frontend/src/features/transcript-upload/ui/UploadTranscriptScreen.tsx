@@ -3,6 +3,8 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { buildApiUrl } from "@/lib/api"
 import { AppShell } from "@/app/AppShell"
+import { parseApiError } from "@/shared/lib/apiErrors"
+import { PageHeader } from "@/shared/ui/PageHeader"
 
 interface UploadTranscriptScreenProps {
   patientId: string | null
@@ -28,7 +30,6 @@ export function UploadTranscriptScreen({
   const [rawTranscript, setRawTranscript] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
   const breadcrumbItems = ["Clinical Trials", "Patient Selection", "Upload Transcript"]
 
@@ -57,7 +58,6 @@ export function UploadTranscriptScreen({
     try {
       setIsSubmitting(true)
       setErrorMessage(null)
-      setSuccessMessage(null)
 
       const formData = new FormData()
       formData.append("patient_id", patientId)
@@ -73,13 +73,15 @@ export function UploadTranscriptScreen({
       })
 
       if (!response.ok) {
-        const message = await extractApiError(response)
+        const message = await parseApiError(
+          response,
+          `Unable to upload transcript (HTTP ${response.status}).`,
+        )
         setErrorMessage(message)
         return
       }
 
       const payload = (await response.json()) as UploadTranscriptResponse
-      setSuccessMessage(`Uploaded successfully. Consultation ID: ${payload.consultation_id}`)
 
       try {
         const extractResponse = await fetch(buildApiUrl("/transcript/extract"), {
@@ -113,18 +115,7 @@ export function UploadTranscriptScreen({
   return (
     <AppShell>
       <section>
-          <header className="border-b border-border/70 bg-white/60 px-8 py-7 backdrop-blur-sm lg:px-10">
-            <nav className="flex items-center gap-3 text-lg text-slate-400">
-              {breadcrumbItems.map((crumb, index) => (
-                <div key={crumb} className="flex items-center gap-3">
-                  <span className={index === breadcrumbItems.length - 1 ? "text-slate-700" : ""}>
-                    {crumb}
-                  </span>
-                  {index < breadcrumbItems.length - 1 && <span>›</span>}
-                </div>
-              ))}
-            </nav>
-          </header>
+          <PageHeader breadcrumbs={breadcrumbItems} />
 
           <main className="px-6 py-9 lg:px-10">
             <div className="mx-auto max-w-4xl space-y-8">
@@ -220,11 +211,6 @@ export function UploadTranscriptScreen({
                     {errorMessage}
                   </p>
                 ) : null}
-                {successMessage ? (
-                  <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
-                    {successMessage}
-                  </p>
-                ) : null}
 
                 <div className="mt-6 flex items-center justify-between">
                   <p className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
@@ -242,25 +228,4 @@ export function UploadTranscriptScreen({
       </section>
     </AppShell>
   )
-}
-
-async function extractApiError(response: Response): Promise<string> {
-  try {
-    const payload = (await response.json()) as {
-      detail?: string | Array<{ msg?: string }>
-    }
-    if (typeof payload.detail === "string") {
-      return payload.detail
-    }
-    if (Array.isArray(payload.detail) && payload.detail.length > 0) {
-      const firstMessage = payload.detail[0]?.msg
-      if (firstMessage) {
-        return firstMessage
-      }
-    }
-  } catch {
-    return `Unable to upload transcript (HTTP ${response.status}).`
-  }
-
-  return `Unable to upload transcript (HTTP ${response.status}).`
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import type { Dispatch, SetStateAction } from "react"
 import { buildApiUrl } from "@/lib/api"
-import { parseApiError } from "@/shared/lib/apiErrors"
+import { parseApiError } from "@/shared/utils/apiErrors"
 import type { ExtractedData } from "@/shared/types/clinical"
 import {
   applyListDraftsToExtracted,

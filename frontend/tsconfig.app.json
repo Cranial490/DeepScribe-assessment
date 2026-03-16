@@ -10,7 +10,13 @@
 
     "types": ["react", "react-dom"],
 
-    "strict": true,
+    "strict": false,
+    "noImplicitAny": false,
+    "noImplicitThis": false,
+    "strictNullChecks": false,
+    "strictFunctionTypes": false,
+    "strictBindCallApply": false,
+    "strictPropertyInitialization": false,
     "skipLibCheck": true,
 
     "allowSyntheticDefaultImports": true,

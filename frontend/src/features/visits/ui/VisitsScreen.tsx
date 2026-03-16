@@ -30,6 +30,13 @@ interface VisitRow {
   status: VisitStatus
 }
 
+type LoadConsultationsResult =
+  | { kind: "success"; rows: ReadonlyArray<VisitRow> }
+  | { kind: "error" }
+  | { kind: "aborted" }
+
+const VISITS_POLL_INTERVAL_MS = 5000
+
 /**
  * Visits route destination for a selected patient.
  */
@@ -49,20 +56,41 @@ export function VisitsScreen({
   useEffect(() => {
     if (!patientId) {
       setVisits([])
+      setErrorMessage(null)
+      setIsLoading(false)
       return
     }
 
-    const controller = new AbortController()
+    let isActive = true
+    let controller: AbortController | null = null
+    let pollingTimerId: number | null = null
 
-    async function loadConsultations() {
+    const clearPollingTimer = () => {
+      if (pollingTimerId !== null) {
+        window.clearTimeout(pollingTimerId)
+        pollingTimerId = null
+      }
+    }
+
+    const loadConsultations = async ({
+      showLoading,
+      surfaceError,
+    }: {
+      showLoading: boolean
+      surfaceError: boolean
+    }): Promise<LoadConsultationsResult> => {
+      const requestController = new AbortController()
+      controller = requestController
       try {
-        setIsLoading(true)
-        setErrorMessage(null)
+        if (showLoading) {
+          setIsLoading(true)
+          setErrorMessage(null)
+        }
 
         const response = await fetch(buildApiUrl(`/patient/${patientId}/consultations`), {
           method: "GET",
           headers: { accept: "application/json" },
-          signal: controller.signal,
+          signal: requestController.signal,
         })
 
         if (!response.ok) {
@@ -70,21 +98,63 @@ export function VisitsScreen({
         }
 
         const payload = (await response.json()) as Array<ApiConsultation>
-        setVisits(payload.map(mapApiConsultationToVisitRow))
+        const mappedVisits = payload.map(mapApiConsultationToVisitRow)
+        if (!isActive) {
+          return { kind: "aborted" }
+        }
+        setVisits(mappedVisits)
+        return { kind: "success", rows: mappedVisits }
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
-          return
+          return { kind: "aborted" }
         }
-        setErrorMessage("Unable to load consultations.")
+        if (surfaceError) {
+          setErrorMessage("Unable to load consultations.")
+        }
+        return { kind: "error" }
       } finally {
-        setIsLoading(false)
+        if (showLoading) {
+          setIsLoading(false)
+        }
+        if (controller === requestController) {
+          controller = null
+        }
       }
     }
 
-    void loadConsultations()
+    const schedulePollingTick = () => {
+      clearPollingTimer()
+      pollingTimerId = window.setTimeout(async () => {
+        const result = await loadConsultations({ showLoading: false, surfaceError: false })
+        if (!isActive) {
+          return
+        }
+        if (result.kind === "error") {
+          schedulePollingTick()
+          return
+        }
+        if (result.kind === "success" && hasInProgressVisits(result.rows)) {
+          schedulePollingTick()
+        }
+      }, VISITS_POLL_INTERVAL_MS)
+    }
+
+    const runInitialLoad = async () => {
+      const result = await loadConsultations({ showLoading: true, surfaceError: true })
+      if (!isActive) {
+        return
+      }
+      if (result.kind === "success" && hasInProgressVisits(result.rows)) {
+        schedulePollingTick()
+      }
+    }
+
+    void runInitialLoad()
 
     return () => {
-      controller.abort()
+      isActive = false
+      clearPollingTimer()
+      controller?.abort()
     }
   }, [patientId])
 
@@ -230,6 +300,10 @@ export function VisitsScreen({
       </section>
     </AppShell>
   )
+}
+
+function hasInProgressVisits(visits: ReadonlyArray<VisitRow>): boolean {
+  return visits.some((visit) => visit.status === "queued" || visit.status === "processing")
 }
 
 function mapApiConsultationToVisitRow(consultation: ApiConsultation): VisitRow {

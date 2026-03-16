@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class Location(BaseModel):
@@ -30,8 +30,25 @@ class TrialSearch(BaseModel):
     interventions: list[str] = Field(default_factory=list)
     biomarker_and_molecular_terms: list[str] = Field(default_factory=list)
     preferred_locations: list[str] = Field(default_factory=list)
-    sex: Literal["Male", "Female", "All"] | None = None
+    sex: Literal["Male", "Female", "All"] = "All"
     age_groups: list[Literal["Child", "Adult", "Older Adult"]] = Field(default_factory=list)
+
+    @field_validator("sex", mode="before")
+    @classmethod
+    def normalize_sex(cls, value: object) -> Literal["Male", "Female", "All"]:
+        if value is None:
+            return "All"
+
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized == "male":
+                return "Male"
+            if normalized == "female":
+                return "Female"
+            if normalized == "all":
+                return "All"
+
+        raise ValueError("Input should be 'Male', 'Female', or 'All'")
 
 
 class AdditionalRelevantFact(BaseModel):

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import type { ChangeEvent } from "react"
 import type { PatientRecord } from "@/features/patient-selection/model/types"
 import { buildApiUrl } from "@/lib/api"
-import { parseApiError } from "@/shared/lib/apiErrors"
+import { parseApiError } from "@/shared/utils/apiErrors"
 
 interface UsePatientSelectionResult {
   query: string

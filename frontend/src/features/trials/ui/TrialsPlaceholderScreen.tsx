@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { buildApiUrl } from "@/lib/api"
 import { fetchClinicalTrials } from "@/lib/clinicalTrials"
 import { AppShell } from "@/app/AppShell"
-import { parseApiError } from "@/shared/lib/apiErrors"
+import { parseApiError } from "@/shared/utils/apiErrors"
 import { PageHeader } from "@/shared/ui/PageHeader"
 import type { ClinicalTrialStudy, TrialSearchInput } from "@/shared/types/clinical"
 

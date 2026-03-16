@@ -1,5 +1,3 @@
-import asyncio
-
 import httpx
 
 
@@ -7,15 +5,36 @@ class ClinicalClient:
     def __init__(
         self,
         base_url: str = "https://clinicaltrials.gov/api/v2/studies",
-        default_fields: tuple[str, ...] = (
+        default_search_fields: tuple[str, ...] = (
             "NCTId",
             "BriefTitle",
             "BriefSummary",
-            "Phase"
+            "Phase",
+        ),
+        default_study_fields: tuple[str, ...] = (
+            "NCTId",
+            "BriefTitle",
+            "Condition",
+            "StudyType",
+            "Phase",
+            "LeadSponsorName",
+            "InterventionName",
+            "InterventionType",
+            "InterventionDescription",
+            "PrimaryOutcomeMeasure",
+            "PrimaryOutcomeDescription",
+            "StdAge",
+            "LocationFacility",
+            "LocationCity",
+            "LocationState",
+            "LocationCountry",
+            "LocationStatus",
+            "BriefSummary",
         ),
     ) -> None:
         self.base_url = base_url
-        self.default_fields = default_fields
+        self.default_search_fields = default_search_fields
+        self.default_study_fields = default_study_fields
 
     async def search_studies(
         self,
@@ -39,7 +58,7 @@ class ClinicalClient:
         - `query.term` <- `query_term`
         - `query.locn` <- `location_text`
         - `filter.overallStatus` <- `overall_status_filter`
-        - `fields` <- `fields` (or `self.default_fields`)
+        - `fields` <- `fields` (or `self.default_search_fields`)
         - `sort` <- `sort`
         - `pageSize` <- `page_size`
         - `pageToken` <- `page_token`
@@ -50,7 +69,7 @@ class ClinicalClient:
             raise ValueError("diagnosis must be a non-empty string.")
 
         page_size = max(1, min(page_size, 100))
-        selected_fields = fields or self.default_fields
+        selected_fields = fields or self.default_search_fields
 
         params: dict[str, str | int] = {
             "format": "json",
@@ -83,3 +102,32 @@ class ClinicalClient:
             if client is None:
                 await managed_client.aclose()
 
+    async def get_study(
+        self,
+        nct_id: str,
+        *,
+        fields: tuple[str, ...] | None = None,
+        timeout_seconds: float = 20.0,
+        client: httpx.AsyncClient | None = None,
+    ) -> dict:
+        nct_id = nct_id.strip()
+        if not nct_id:
+            raise ValueError("nct_id must be a non-empty string.")
+        selected_fields = fields or self.default_study_fields
+
+        managed_client = client or httpx.AsyncClient()
+        try:
+            response = await managed_client.get(
+                f"{self.base_url}/{nct_id}",
+                params={
+                    "format": "json",
+                    "fields": ",".join(selected_fields),
+                },
+                headers={"accept": "application/json"},
+                timeout=timeout_seconds,
+            )
+            response.raise_for_status()
+            return response.json()
+        finally:
+            if client is None:
+                await managed_client.aclose()

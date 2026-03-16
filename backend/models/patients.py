@@ -48,6 +48,7 @@ class ConsultationRecord(BaseModel):
     consultation_id: str
     raw_transcript: str
     status: Literal["processing", "completed", "failed"] = "processing"
+    edited: bool = False
     llm_extracted: LLMExtracted | None = None
     created_at: datetime | None = None
 

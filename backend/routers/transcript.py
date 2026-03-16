@@ -4,9 +4,9 @@ from uuid import uuid4
 
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
-from models.patients import ConsultationRecord
+from models.patients import ConsultationRecord, LLMExtracted
 from utils.clinical_apis.studies import ClinicalClient
 from utils.extraction_module.job_runner import ExtractionJobRunner
 
@@ -21,12 +21,13 @@ class ExtractTranscriptRequest(BaseModel):
 class EditExtractedRequest(BaseModel):
     patient_id: int
     consultation_id: str
-    updates: dict[str, object]
+    llm_extracted: LLMExtracted
 
 
 class TrialSearchRequest(BaseModel):
     patient_id: int
     consultation_id: str
+    page_token: str | None = None
 
 
 def _normalize_unique(values: list[str | None]) -> list[str]:
@@ -206,31 +207,19 @@ async def edit_extracted_data(
             ),
         )
 
-    if "status" in payload.updates:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Field 'status' cannot be edited.",
-        )
-
     current = consultation.llm_extracted.model_dump(mode="python")
-    merged = {**current, **payload.updates}
+    incoming = payload.llm_extracted.model_dump(mode="python")
 
-    try:
-        updated_extracted = consultation.llm_extracted.__class__.model_validate(merged)
-    except ValidationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=exc.errors(),
-        ) from exc
-
-    consultation.llm_extracted = updated_extracted
-    patient.consultation_records[payload.consultation_id] = consultation
-    await patient_db.save(patient)
+    if current != incoming:
+        consultation.llm_extracted = payload.llm_extracted
+        consultation.edited = True
+        patient.consultation_records[payload.consultation_id] = consultation
+        await patient_db.save(patient)
 
     return {
         "patient_id": payload.patient_id,
         "consultation_id": payload.consultation_id,
-        "llm_extracted": updated_extracted.model_dump(mode="json"),
+        "llm_extracted": payload.llm_extracted.model_dump(mode="json"),
     }
 
 
@@ -296,7 +285,20 @@ async def fetch_trials_from_extracted(
             diagnosis=diagnosis,
             query_term=query_term,
             location_text=location_text,
+            page_token=payload.page_token,
         )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+
+@router.get("/trial/{nctId}")
+async def get_trial(nctId: str) -> dict[str, object]:
+    clinical_client = ClinicalClient()
+    try:
+        return await clinical_client.get_study(nct_id=nctId)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -5,6 +5,7 @@ class ClinicalClient:
     def __init__(
         self,
         base_url: str = "https://clinicaltrials.gov/api/v2/studies",
+        user_agent: str = "Clinical Trial Search (research)",
         default_search_fields: tuple[str, ...] = (
             "NCTId",
             "BriefTitle",
@@ -33,6 +34,7 @@ class ClinicalClient:
         ),
     ) -> None:
         self.base_url = base_url
+        self.user_agent = user_agent
         self.default_search_fields = default_search_fields
         self.default_study_fields = default_study_fields
 
@@ -93,7 +95,10 @@ class ClinicalClient:
             response = await managed_client.get(
                 self.base_url,
                 params=params,
-                headers={"accept": "application/json"},
+                headers={
+                    "accept": "application/json",
+                    "User-Agent": self.user_agent,
+                },
                 timeout=timeout_seconds,
             )
             response.raise_for_status()
@@ -123,7 +128,10 @@ class ClinicalClient:
                     "format": "json",
                     "fields": ",".join(selected_fields),
                 },
-                headers={"accept": "application/json"},
+                headers={
+                    "accept": "application/json",
+                    "User-Agent": self.user_agent,
+                },
                 timeout=timeout_seconds,
             )
             response.raise_for_status()

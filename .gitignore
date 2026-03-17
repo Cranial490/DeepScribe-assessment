@@ -208,3 +208,4 @@ __marimo__/
 # Frontend source utilities must be versioned.
 !frontend/src/lib/
 !frontend/src/lib/**
+*.pkl

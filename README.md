@@ -1,8 +1,8 @@
 # DeepScribe Assessment
 
 The backend is deployed in a serverless environment and may take ~2 minutes to spin up on first request.
-The DB is an in-memory mock for demo purposes.
-[Deployed Demo](https://deepscribe-assessment-1.onrender.com/)
+The patient DB is persisted to a local pickle file (`patient_db.pkl`) in the repo root for demo purposes.
+
 ***The demo is running on 0.1 CPU (free-tier) compute, so it may feel a little slow.***
 
 ## Overview
@@ -23,7 +23,7 @@ From an engineering perspective, the system is intentionally pragmatic: a featur
 - A larger transcript (~4k words) is expected to process in about 1 minute.
 - Async extraction with polling is preferred over a single blocking request so clinicians aren't held up during processing.
 - SSE could improve live status UX, but given uncertainty around deployment/proxy timeout behaviour, polling is the safer default.
-- Backend storage and job queue are intentionally in-memory for this assessment (non-persistent by design).
+- Patient records are persisted to `patient_db.pkl`, while the extraction job queue remains in-memory.
 - Duplicate patients can currently be created — no deduplication or uniqueness guard yet.
 - ClinicalTrials.gov's built-in relevance sorting (`sort=@relevance`) is sufficient for surfacing top matches (no custom ranking model).
 - Only actively recruiting studies are relevant to this workflow (`filter.overallStatus=RECRUITING`).
@@ -97,4 +97,4 @@ VITE_BACKEND_BASE_URL=http://127.0.0.1:8000
 
 - Python `>=3.13` is required (see `backend/pyproject.toml`).
 - Without a valid `OPENAI_API_KEY`, transcript extraction jobs will fail — uploads will still work, but extraction won't complete.
-- Data is in-memory, so restarting the backend clears all patients, consultations, and jobs.
+- Patient/consultation data persists across backend restarts via `patient_db.pkl`; extraction job queue state does not.

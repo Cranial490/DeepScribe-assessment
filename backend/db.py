@@ -1,4 +1,6 @@
 from datetime import datetime
+from pathlib import Path
+import pickle
 from typing import Literal
 from uuid import uuid4
 
@@ -8,9 +10,54 @@ from models.patients import Patient
 
 
 class InMemoryPatientDB:
-    def __init__(self) -> None:
+    def __init__(self, storage_path: Path | None = None) -> None:
         self._patients: dict[int, Patient] = {}
         self.id_counter = 1
+        self.storage_path = storage_path or Path(__file__).resolve().parent.parent / "patient_db.pkl"
+        self._load_from_disk()
+
+    def _load_from_disk(self) -> None:
+        if not self.storage_path.exists():
+            return
+
+        try:
+            with self.storage_path.open("rb") as persisted_file:
+                payload = pickle.load(persisted_file)
+        except Exception:
+            # If the pickle is invalid/corrupt, fall back to an empty in-memory state.
+            return
+
+        if not isinstance(payload, dict):
+            return
+
+        patients = payload.get("patients")
+        id_counter = payload.get("id_counter")
+        if not isinstance(patients, dict):
+            return
+
+        normalized_patients: dict[int, Patient] = {}
+        for key, value in patients.items():
+            if not isinstance(key, int):
+                continue
+            if isinstance(value, Patient):
+                normalized_patients[key] = value
+
+        self._patients = normalized_patients
+        if isinstance(id_counter, int) and id_counter > 0:
+            self.id_counter = id_counter
+        elif normalized_patients:
+            self.id_counter = max(normalized_patients.keys()) + 1
+
+    def _persist_to_disk(self) -> None:
+        payload = {
+            "id_counter": self.id_counter,
+            "patients": self._patients,
+        }
+        self.storage_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = self.storage_path.with_suffix(".tmp")
+        with temp_path.open("wb") as temp_file:
+            pickle.dump(payload, temp_file)
+        temp_path.replace(self.storage_path)
 
     def get_id(self) -> int:
         current_id = self.id_counter
@@ -19,6 +66,7 @@ class InMemoryPatientDB:
 
     async def save(self, patient: Patient) -> None:
         self._patients[patient.id] = patient
+        self._persist_to_disk()
 
     async def get(self, patient_id: int) -> Patient | None:
         return self._patients.get(patient_id)

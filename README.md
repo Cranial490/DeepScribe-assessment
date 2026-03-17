@@ -2,7 +2,7 @@
 
 The backend is deployed in a serverless environment and may take ~2 minutes to spin up on first request.
 The patient DB is persisted to a local pickle file (`patient_db.pkl`) in the repo root for demo purposes.
-
+[Deployed Demo](https://deepscribe-assessment-1.onrender.com/)
 ***The demo is running on 0.1 CPU (free-tier) compute, so it may feel a little slow.***
 
 ## Overview

@@ -51,8 +51,9 @@ async def get_patients(request: Request) -> list[dict[str, object]]:
 @router.post("/create", status_code=status.HTTP_201_CREATED)
 async def create_patient(payload: CreatePatientRequest, request: Request) -> dict[str, object]:
     patient_db = request.app.state.patient_db
+    patient_id = await patient_db.get_id()
     patient = Patient(
-        id=patient_db.get_id(),
+        id=patient_id,
         first_name=payload.first_name,
         last_name=payload.last_name,
         date_of_birth=payload.date_of_birth,

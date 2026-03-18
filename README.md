@@ -1,7 +1,7 @@
 # DeepScribe Assessment
 
 The backend is deployed in a serverless environment and may take ~2 minutes to spin up on first request.
-The patient DB is persisted to a local pickle file (`patient_db.pkl`) in the repo root for demo purposes.
+The patient DB is persisted in Postgres for demo purposes.
 
 ***The demo is running on 0.1 CPU (free-tier) compute, so it may feel a little slow.***
 
@@ -11,19 +11,19 @@ This project is a doctor-facing clinical trial matching workflow built with a cl
 
 Doctors can create or select a patient, upload a consultation transcript (paste text or attach a `.txt` file), and trigger AI extraction of structured clinical data. The extracted output is presented in an editable format so clinicians can review and correct it before it's used for any downstream decisions. Once reviewed, the app fetches relevant trials from ClinicalTrials.gov and ranks them by relevance.
 
-From an engineering perspective, the system is intentionally pragmatic: a feature-oriented React frontend, a typed FastAPI backend with focused routers, strict data models for extraction payloads, and an async extraction + polling flow that keeps the UI responsive during the 30s–1m processing window. For this assessment, persistence and job state are handled in memory to keep the architecture simple, while leaving a clean path to durable storage and queuing later.
+From an engineering perspective, the system is intentionally pragmatic: a feature-oriented React frontend, a typed FastAPI backend with focused routers, strict data models for extraction payloads, and an async extraction + polling flow that keeps the UI responsive during the 30s–1m processing window. Patient persistence is handled in Postgres, while extraction job state is currently in-memory to keep queueing simple for the assessment.
 
 ## Assumptions
 
 - Unauthenticated access is acceptable for the assessment (no login, role, or permission layer).
 - UTF-8 plain-text transcript input is a reasonable constraint for v1 (`.txt` or pasted text only; no PDF or audio ingestion).
 - The primary user is a doctor using the tool to identify relevant clinical studies and support enrollment decisions.
-- In-memory storage and background jobs are acceptable for demo scope, with durability and scalability deferred.
+- Postgres persistence for patient aggregates is sufficient for demo scope, while the extraction job queue can remain in-memory.
 - Consultations are assumed to be up to ~30 minutes, producing roughly ~1.5k-2.5k words of transcript text.
 - A larger transcript (~4k words) is expected to process in about 1 minute.
 - Async extraction with polling is preferred over a single blocking request so clinicians aren't held up during processing.
 - SSE could improve live status UX, but given uncertainty around deployment/proxy timeout behaviour, polling is the safer default.
-- Patient records are persisted to `patient_db.pkl`, while the extraction job queue remains in-memory.
+- Patient records are persisted in Postgres, while the extraction job queue remains in-memory.
 - Duplicate patients can currently be created — no deduplication or uniqueness guard yet.
 - ClinicalTrials.gov's built-in relevance sorting (`sort=@relevance`) is sufficient for surfacing top matches (no custom ranking model).
 - Only actively recruiting studies are relevant to this workflow (`filter.overallStatus=RECRUITING`).
@@ -63,9 +63,10 @@ cd DeepScribe-assessment
 cd backend
 ```
 
-3. **Create `backend/.env` with your OpenAI key:**
+3. **Create `backend/.env` with your OpenAI key and Postgres URL:**
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
+DATABASE_URL=postgresql://<user>:<password>@<host>/<database>?sslmode=require
 ```
 
 4. **Install dependencies and run FastAPI:**
@@ -97,4 +98,4 @@ VITE_BACKEND_BASE_URL=http://127.0.0.1:8000
 
 - Python `>=3.13` is required (see `backend/pyproject.toml`).
 - Without a valid `OPENAI_API_KEY`, transcript extraction jobs will fail — uploads will still work, but extraction won't complete.
-- Patient/consultation data persists across backend restarts via `patient_db.pkl`; extraction job queue state does not.
+- Patient/consultation data persists across backend restarts via Postgres; extraction job queue state does not.

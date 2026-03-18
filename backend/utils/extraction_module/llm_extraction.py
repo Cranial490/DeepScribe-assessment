@@ -1,10 +1,10 @@
-from db import InMemoryPatientDB
 from models.patients import LLMExtracted
+from persistence.patient_store import PatientStore
 from utils.llm_base import LLMBase
 from utils.prompts import PATIENT_PROFILE_EXTRACTION
 
 class LLMExtractionService:
-    def __init__(self, db: InMemoryPatientDB, llm: LLMBase) -> None:
+    def __init__(self, db: PatientStore, llm: LLMBase) -> None:
         self.db = db
         self.llm = llm
 
